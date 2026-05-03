@@ -118,9 +118,10 @@ export function createAttendanceStudents(count: number, existing: Student[] = []
         ...existingStudent,
         name: String(attendanceNumber),
         attendanceNumber,
+        gender: existingStudent.gender === 'unspecified' ? 'boy' : existingStudent.gender,
       }
     }
-    return makeStudent(String(attendanceNumber), 'unspecified', 'standard', 'standard', '', attendanceNumber)
+    return makeStudent(String(attendanceNumber), 'boy', 'standard', 'standard', '', attendanceNumber)
   })
 }
 

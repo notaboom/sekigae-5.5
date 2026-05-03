@@ -55,7 +55,7 @@ type StudentDraft = {
 
 const emptyDraft: StudentDraft = {
   name: '',
-  gender: 'unspecified',
+  gender: 'boy',
   vision: 'standard',
   height: 'standard',
   note: '',

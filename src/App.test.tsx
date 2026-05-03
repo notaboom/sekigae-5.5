@@ -33,6 +33,7 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: '名前方式' }))
 
     expect(screen.getByPlaceholderText('名前')).toBeTruthy()
+    expect((screen.getByLabelText('性別') as HTMLSelectElement).value).toBe('boy')
     expect(screen.getByText('名前方式に切り替えました')).toBeTruthy()
   })
 })

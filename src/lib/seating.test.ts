@@ -30,8 +30,8 @@ describe('createInitialState', () => {
 
     expect(state.rosterMode).toBe('attendance')
     expect(state.students).toHaveLength(state.classroom.rows * state.classroom.cols)
-    expect(state.students[0]).toMatchObject({ name: '1', attendanceNumber: 1 })
-    expect(state.students.at(-1)).toMatchObject({ name: '30', attendanceNumber: 30 })
+    expect(state.students[0]).toMatchObject({ name: '1', attendanceNumber: 1, gender: 'boy' })
+    expect(state.students.at(-1)).toMatchObject({ name: '30', attendanceNumber: 30, gender: 'boy' })
   })
 })
 

@@ -74,11 +74,12 @@ export type GenerateResult =
   | { ok: false; error: string }
 
 export const STORAGE_KEY = 'sekigae_55_workspace_v1'
+export const RECURRENCE_HISTORY_DEPTH = 3
 
 export const DEFAULT_OPTIONS: SeatingOptions = {
   trials: 120,
   improvementSteps: 180,
-  historyDepth: 8,
+  historyDepth: RECURRENCE_HISTORY_DEPTH,
   frontWeight: 4,
   heightWeight: 2,
   sameSeatPenalty: 9,
@@ -450,7 +451,7 @@ function buildEmptyAssignments(
 }
 
 function buildHistoryIndex(history: SeatingPlan[], historyDepth: number) {
-  const recent = history.slice(-historyDepth)
+  const recent = history.slice(-clampHistoryDepth(historyDepth))
   const seatByStudent = new Map<string, Set<string>>()
   const neighborPairs = new Set<string>()
   const leftRightPairs = new Set<string>()
@@ -466,6 +467,11 @@ function buildHistoryIndex(history: SeatingPlan[], historyDepth: number) {
   })
 
   return { seatByStudent, neighborPairs, leftRightPairs }
+}
+
+function clampHistoryDepth(historyDepth: number): number {
+  if (!Number.isFinite(historyDepth)) return RECURRENCE_HISTORY_DEPTH
+  return Math.max(1, Math.min(RECURRENCE_HISTORY_DEPTH, Math.round(historyDepth)))
 }
 
 function scoreAssignments(

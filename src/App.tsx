@@ -26,6 +26,7 @@ import {
   type Student,
   type VisionNeed,
   DEFAULT_OPTIONS,
+  RECURRENCE_HISTORY_DEPTH,
   STORAGE_KEY,
   availableSeatCount,
   buildSeatList,
@@ -810,7 +811,7 @@ function App() {
               label="履歴"
               value={state.options.historyDepth}
               min={1}
-              max={24}
+              max={RECURRENCE_HISTORY_DEPTH}
               step={1}
               onChange={(historyDepth) => updateOptions({ historyDepth })}
             />
@@ -1135,7 +1136,7 @@ function buildAlerts(
 ): AlertItem[] {
   if (!plan) return [{ id: 'not-generated', kind: 'not-generated', label: 'まだ生成されていません', seats: [] }]
 
-  const previousPlans = history.filter((item) => item.id !== plan.id).slice(-historyDepth)
+  const previousPlans = history.filter((item) => item.id !== plan.id).slice(-clampRecurrenceDepth(historyDepth))
   const past = buildAlertHistoryIndex(previousPlans)
   const unavailable = new Set(classroom.unavailableSeats)
   const alerts: AlertItem[] = []
@@ -1306,6 +1307,7 @@ function coerceState(candidate: Partial<AppState>): AppState {
     ...initial.options,
     ...(candidate.options ?? {}),
   }
+  options.historyDepth = clampRecurrenceDepth(options.historyDepth)
   const history = Array.isArray(candidate.history) ? candidate.history.slice(-HISTORY_LIMIT) : []
   return {
     rosterMode,
@@ -1409,6 +1411,12 @@ function displayStudentName(student: Student, rosterMode: RosterMode): string {
 function clamp(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min
   return Math.max(min, Math.min(max, value))
+}
+
+function clampRecurrenceDepth(value: number): number {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return RECURRENCE_HISTORY_DEPTH
+  return clamp(Math.round(numeric), 1, RECURRENCE_HISTORY_DEPTH)
 }
 
 export default App

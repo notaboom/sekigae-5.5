@@ -7,6 +7,7 @@ import {
   type SeatingPlan,
   type Student,
   DEFAULT_OPTIONS,
+  RECURRENCE_HISTORY_DEPTH,
   adjacencyPairs,
   availableSeatCount,
   buildSeatList,
@@ -113,7 +114,7 @@ function migrateLegacyOptions(options: LegacyState['options']): SeatingOptions {
     ...DEFAULT_OPTIONS,
     trials: clampNumber(options?.trials, 20, 400, DEFAULT_OPTIONS.trials),
     improvementSteps: clampNumber(options?.hillSteps, 40, 600, DEFAULT_OPTIONS.improvementSteps),
-    historyDepth: clampNumber(options?.historyWindow, 1, 24, DEFAULT_OPTIONS.historyDepth),
+    historyDepth: clampNumber(options?.historyWindow, 1, RECURRENCE_HISTORY_DEPTH, DEFAULT_OPTIONS.historyDepth),
     frontWeight: clampNumber(options?.visionWeight, 0, 10, DEFAULT_OPTIONS.frontWeight),
     heightWeight: clampNumber(options?.heightWeight, 0, 10, DEFAULT_OPTIONS.heightWeight),
     sameSeatPenalty: clampNumber(options?.sameSeatPenalty, 0, 20, DEFAULT_OPTIONS.sameSeatPenalty),
@@ -186,7 +187,10 @@ function buildDiagnostics(
   historyDepth: number,
 ): PlanDiagnostics {
   const studentsById = new Map(students.map((student) => [student.id, student]))
-  const recent = previousPlans.slice(-historyDepth)
+  const recurrenceDepth = Number.isFinite(historyDepth)
+    ? Math.max(1, Math.min(RECURRENCE_HISTORY_DEPTH, Math.round(historyDepth)))
+    : RECURRENCE_HISTORY_DEPTH
+  const recent = previousPlans.slice(-recurrenceDepth)
   const previousSeats = new Map<string, Set<string>>()
   const previousPairs = new Set<string>()
   const previousHorizontal = new Set<string>()

@@ -113,3 +113,16 @@
 - 旧キー `seat_shuffle_demo_v1` の名簿、行列、使用不可席、固定席、履歴、現在表示中の席替えを5.5形式に変換できる。
 - 旧データ移行時は名前方式で開き、既存の児童名をそのまま利用できる。
 - `VITE_BASE_PATH=/sekigae/` により旧URL向けのGitHub Pagesビルドを作成できる。
+
+## 2026-05-03 再発判定3回上限
+
+| チェック | 結果 | メモ |
+| --- | --- | --- |
+| `npm.cmd run verify` | pass | lint、13 tests、40 harness checks、build |
+| `npm.cmd run smoke:ui` | pass | 生成、30 tiles、行列select 100 options |
+
+## 追加確認観点
+
+- 再発判定は、保存履歴数や保存済み設定値に関係なく直近3回までを上限にする。
+- 生成ロジック、手動入れ替え後の再診断、ALERTS表示、旧localStorage移行診断で同じ上限を使う。
+- 利用者向けURLは `notaboom/sekigae` を継続反映先として扱う。

@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_OPTIONS,
+  type SeatingPlan,
   adjacencyPairs,
   createInitialState,
   generateSeatingPlan,
+  horizontalPairs,
   makeStudent,
   parseRosterText,
   seatKey,
+  updatePlanAssignments,
 } from './seating'
 
 describe('parseRosterText', () => {
@@ -106,4 +109,78 @@ describe('generateSeatingPlan', () => {
     expect(adjacencyPairs(result.plan.assignments, result.plan)).toEqual(result.plan.pairs)
     expect(result.plan.horizontalPairs.length).toBeGreaterThan(0)
   })
+
+  it('caps recurrence checks to the latest three histories', () => {
+    const students = [makeStudent('あおい'), makeStudent('はると')]
+    const classroom = { rows: 1, cols: 4, unavailableSeats: [], fixedAssignments: {} }
+    const olderRepeat = makePlan('older-repeat', classroom, {
+      [seatKey(0, 0)]: students[0].id,
+      [seatKey(0, 1)]: students[1].id,
+      [seatKey(0, 2)]: null,
+      [seatKey(0, 3)]: null,
+    })
+    const recentA = makePlan('recent-a', classroom, {
+      [seatKey(0, 0)]: null,
+      [seatKey(0, 1)]: students[0].id,
+      [seatKey(0, 2)]: null,
+      [seatKey(0, 3)]: students[1].id,
+    })
+    const recentB = makePlan('recent-b', classroom, {
+      [seatKey(0, 0)]: students[1].id,
+      [seatKey(0, 1)]: null,
+      [seatKey(0, 2)]: students[0].id,
+      [seatKey(0, 3)]: null,
+    })
+    const recentC = makePlan('recent-c', classroom, {
+      [seatKey(0, 0)]: students[1].id,
+      [seatKey(0, 1)]: null,
+      [seatKey(0, 2)]: null,
+      [seatKey(0, 3)]: students[0].id,
+    })
+    const current = makePlan('current', classroom, olderRepeat.assignments)
+
+    const updated = updatePlanAssignments({
+      plan: current,
+      assignments: current.assignments,
+      students,
+      classroom,
+      options: { ...DEFAULT_OPTIONS, historyDepth: 24 },
+      history: [olderRepeat, recentA, recentB, recentC, current],
+    })
+
+    expect(updated.diagnostics.sameSeatRepeats).toBe(0)
+    expect(updated.diagnostics.neighborRepeats).toBe(0)
+    expect(updated.diagnostics.horizontalPairRepeats).toBe(0)
+  })
 })
+
+function makePlan(
+  id: string,
+  classroom: { rows: number; cols: number },
+  assignments: Record<string, string | null>,
+): SeatingPlan {
+  return {
+    id,
+    title: id,
+    createdAt: '2026-05-03T00:00:00.000Z',
+    rows: classroom.rows,
+    cols: classroom.cols,
+    score: 0,
+    seed: 1,
+    assignments,
+    pairs: adjacencyPairs(assignments, classroom),
+    horizontalPairs: horizontalPairs(assignments, classroom),
+    diagnostics: {
+      placedStudents: Object.values(assignments).filter(Boolean).length,
+      openSeats: Object.keys(assignments).length,
+      emptySeats: Object.values(assignments).filter((value) => value === null).length,
+      sameSeatRepeats: 0,
+      neighborRepeats: 0,
+      horizontalPairRepeats: 0,
+      frontNeedFrontHalf: 0,
+      frontNeedTotal: 0,
+      tallBackHalf: 0,
+      tallTotal: 0,
+    },
+  }
+}

@@ -2,7 +2,8 @@
 
 小学校の先生向けに、名簿、教室レイアウト、配慮条件、過去履歴を使って席替え案を作る静的Webアプリです。
 
-- 公開URL: https://notaboom.github.io/sekigae-5.5/
+- 公開URL（利用者向け）: https://notaboom.github.io/sekigae/
+- 開発/検証URL: https://notaboom.github.io/sekigae-5.5/
 - 旧版参考: https://github.com/notaboom/sekigae
 - 保存方式: ブラウザの `localStorage`
 - 公開方式: GitHub Pages
@@ -17,6 +18,7 @@
 - 教室の行列変更、使用不可席、固定席
 - 行/列はスマホでも操作しやすい1〜100の選択式
 - 視力配慮、身長配慮、過去と同じ席/隣の回避、任意の男女ペア配慮
+- 再発注意の判定は直近3回までを対象にし、保存履歴全体で過剰に警告しない
 - 生成履歴、過去と同じ左右ペアの表示
 - 生成後の席を選択し、別の席と手動で入れ替え
 - 生成画像3を元にしたリッチGUI: 三列ワークベンチ、座席ビュータブ、凡例、比較サマリー、注意パネル、下部ステータスバー
@@ -73,11 +75,12 @@ npm.cmd run preview
 
 `main` にpushすると `.github/workflows/pages.yml` が `npm run verify` とVite buildを実行し、`dist/` をGitHub Pagesへデプロイします。
 
-旧URL `https://notaboom.github.io/sekigae/` へ差し替える場合は、次のように `/sekigae/` ベースでビルドした `dist/` を旧 `notaboom/sekigae` リポジトリへ配置します。
+利用者向けURLは `https://notaboom.github.io/sekigae/` を継続するため、機能変更後は `sekigae-5.5` の `main` をpushしたうえで、次のように `/sekigae/` ベースでビルドした `dist/` を旧 `notaboom/sekigae` リポジトリへ配置し、そちらもコミット/pushします。
 
 ```powershell
 $env:VITE_BASE_PATH = '/sekigae/'
 npm.cmd run build
+Remove-Item Env:VITE_BASE_PATH -ErrorAction SilentlyContinue
 ```
 
 ## 復元タグ

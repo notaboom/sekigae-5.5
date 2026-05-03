@@ -42,6 +42,7 @@ import {
   studentCareLabel,
   updatePlanAssignments,
 } from './lib/seating'
+import { LEGACY_STORAGE_KEY, migrateLegacyState } from './lib/legacyMigration'
 
 const HISTORY_LIMIT = 24
 const CLASSROOM_SIZE_OPTIONS = Array.from({ length: 100 }, (_, index) => index + 1)
@@ -82,12 +83,13 @@ const emptyDraft: StudentDraft = {
 }
 
 function App() {
-  const [state, setState] = useState<AppState>(() => loadState())
+  const [initialLoad] = useState(() => loadState())
+  const [state, setState] = useState<AppState>(initialLoad.state)
   const [draft, setDraft] = useState<StudentDraft>(emptyDraft)
   const [importText, setImportText] = useState('')
   const [selectedSeat, setSelectedSeat] = useState<string | null>(null)
   const [swapTargetSeat, setSwapTargetSeat] = useState('')
-  const [message, setMessage] = useState('準備完了')
+  const [message, setMessage] = useState(initialLoad.migratedLegacy ? '旧版データを引き継ぎました' : '準備完了')
   const importFileRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -1261,14 +1263,28 @@ function compareSeatKeys(left: string, right: string): number {
   return leftCol - rightCol
 }
 
-function loadState(): AppState {
+function loadState(): { state: AppState; migratedLegacy: boolean } {
   const raw = localStorage.getItem(STORAGE_KEY)
-  if (!raw) return createInitialState()
-  try {
-    return coerceState(JSON.parse(raw) as AppState)
-  } catch {
-    return createInitialState()
+  if (raw) {
+    try {
+      return { state: coerceState(JSON.parse(raw) as AppState), migratedLegacy: false }
+    } catch {
+      // Fall through to legacy migration or initial state.
+    }
   }
+  const legacyRaw = localStorage.getItem(LEGACY_STORAGE_KEY)
+  if (legacyRaw) {
+    try {
+      const migrated = migrateLegacyState(JSON.parse(legacyRaw))
+      if (migrated) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated))
+        return { state: migrated, migratedLegacy: true }
+      }
+    } catch {
+      // Ignore unreadable legacy payloads and start safely.
+    }
+  }
+  return { state: createInitialState(), migratedLegacy: false }
 }
 
 function coerceState(candidate: Partial<AppState>): AppState {

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
 import App from './App'
+import { LEGACY_STORAGE_KEY } from './lib/legacyMigration'
 import {
   type SeatingPlan,
   STORAGE_KEY,
@@ -13,6 +14,7 @@ import {
 describe('App', () => {
   beforeEach(() => {
     localStorage.removeItem(STORAGE_KEY)
+    localStorage.removeItem(LEGACY_STORAGE_KEY)
   })
 
   it('renders the teacher workbench with default roster', () => {
@@ -87,6 +89,28 @@ describe('App', () => {
     const alertSeat = screen.getByTitle(/1行 1列 \/ 注意:/)
     expect(alertSeat.className).toContain('alert-target')
     expect(alertSeat.textContent).toContain('注意')
+  })
+
+  it('loads old sekigae localStorage data without user action', () => {
+    localStorage.setItem(
+      LEGACY_STORAGE_KEY,
+      JSON.stringify({
+        students: [{ id: 'legacy-1', name: '旧名簿', gender: 'girl', vision: 'poor', height: 'normal', notes: '旧メモ' }],
+        rows: 1,
+        cols: 1,
+        blocked: [],
+        fixedMap: {},
+        history: [],
+        current: null,
+      }),
+    )
+
+    render(<App />)
+
+    expect(screen.getByText('旧版データを引き継ぎました')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '名前方式' }).className).toContain('active')
+    expect(screen.getByDisplayValue('旧名簿')).toBeTruthy()
+    expect(localStorage.getItem(STORAGE_KEY)).toContain('legacy-1')
   })
 })
 

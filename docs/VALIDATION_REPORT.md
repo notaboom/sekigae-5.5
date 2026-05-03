@@ -100,3 +100,16 @@
 - 同じ席、同じ隣接、左右ペア、空席のALERTSから対象座席を復元できる。
 - 対象席には `alert-target` と種類別classが付き、座席表上で注意バッジと強調枠が表示される。
 - ALERTSパネルには対象席ラベルの抜粋が表示される。
+
+## 2026-05-03 旧URL/localStorage互換
+
+| チェック | 結果 | メモ |
+| --- | --- | --- |
+| `npm.cmd run verify` | pass | lint、12 tests、40 harness checks、build |
+| `npm.cmd run smoke:ui` | pass | 生成、席選択、手動入れ替え、30 tiles、行列select 100 options |
+
+## 追加確認観点
+
+- 旧キー `seat_shuffle_demo_v1` の名簿、行列、使用不可席、固定席、履歴、現在表示中の席替えを5.5形式に変換できる。
+- 旧データ移行時は名前方式で開き、既存の児童名をそのまま利用できる。
+- `VITE_BASE_PATH=/sekigae/` により旧URL向けのGitHub Pagesビルドを作成できる。

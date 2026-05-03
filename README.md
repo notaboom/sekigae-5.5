@@ -6,6 +6,7 @@
 - 旧版参考: https://github.com/notaboom/sekigae
 - 保存方式: ブラウザの `localStorage`
 - 公開方式: GitHub Pages
+- 旧URL互換: `https://notaboom.github.io/sekigae/` でも5.5相当を配信
 
 ## 主な機能
 
@@ -20,6 +21,7 @@
 - 生成後の席を選択し、別の席と手動で入れ替え
 - 生成画像3を元にしたリッチGUI: 三列ワークベンチ、座席ビュータブ、凡例、比較サマリー、注意パネル、下部ステータスバー
 - ALERTSがある場合、対象席を座席表上で注意バッジと強調枠により可視化
+- 旧 `notaboom/sekigae` の `localStorage` キー `seat_shuffle_demo_v1` を初回起動時に自動移行
 - JSON保存/読込、座席CSV、A4印刷
 - public GitHub Pagesで使える静的配信
 
@@ -70,6 +72,13 @@ npm.cmd run preview
 ## 公開
 
 `main` にpushすると `.github/workflows/pages.yml` が `npm run verify` とVite buildを実行し、`dist/` をGitHub Pagesへデプロイします。
+
+旧URL `https://notaboom.github.io/sekigae/` へ差し替える場合は、次のように `/sekigae/` ベースでビルドした `dist/` を旧 `notaboom/sekigae` リポジトリへ配置します。
+
+```powershell
+$env:VITE_BASE_PATH = '/sekigae/'
+npm.cmd run build
+```
 
 ## 復元タグ
 

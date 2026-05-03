@@ -39,6 +39,10 @@ try {
   await page.goto(url, { waitUntil: 'networkidle' })
   await page.getByTestId('generate-button').click()
   await page.getByText('席替えを生成しました').waitFor()
+  await page.locator('.seat-tile').first().click()
+  await page.getByLabel('入れ替え先').selectOption('0-1')
+  await page.getByRole('button', { name: '入れ替え' }).click()
+  await page.getByText('席を入れ替えました').waitFor()
   await page.screenshot({ path: path.join(outputDir, 'sekigae-home.png'), fullPage: true })
 
   const sizeSelects = page.locator('.field-grid.two select')

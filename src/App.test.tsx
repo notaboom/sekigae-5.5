@@ -27,6 +27,17 @@ describe('App', () => {
     expect(screen.getByText(/score/)).toBeTruthy()
   })
 
+  it('allows a generated seat to be swapped manually', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByTestId('generate-button'))
+    fireEvent.click(screen.getByTitle('1行 1列'))
+    fireEvent.change(screen.getByLabelText('入れ替え先'), { target: { value: '0-1' } })
+    fireEvent.click(screen.getByRole('button', { name: '入れ替え' }))
+
+    expect(screen.getByText('席を入れ替えました')).toBeTruthy()
+  })
+
   it('switches to name mode when the teacher wants a named roster', () => {
     render(<App />)
 

@@ -219,6 +219,37 @@ export function availableSeatCount(classroom: Classroom): number {
   return buildSeatList(classroom).length - classroom.unavailableSeats.length
 }
 
+export function updatePlanAssignments(input: {
+  plan: SeatingPlan
+  assignments: Record<string, string | null>
+  students: Student[]
+  classroom: Classroom
+  options: SeatingOptions
+  history: SeatingPlan[]
+}): SeatingPlan {
+  const students = input.students.filter((student) => student.name.trim())
+  const studentsById = new Map(students.map((student) => [student.id, student]))
+  const past = buildHistoryIndex(
+    input.history.filter((plan) => plan.id !== input.plan.id),
+    input.options.historyDepth,
+  )
+  const evaluation = scoreAssignments(input.assignments, studentsById, input.classroom, input.options, past)
+  return {
+    ...input.plan,
+    title: input.plan.title.includes('手動調整') ? input.plan.title : `${input.plan.title}（手動調整）`,
+    score: evaluation.score,
+    assignments: { ...input.assignments },
+    pairs: adjacencyPairs(input.assignments, input.classroom),
+    horizontalPairs: horizontalPairs(input.assignments, input.classroom),
+    diagnostics: {
+      ...evaluation.diagnostics,
+      placedStudents: Object.values(input.assignments).filter(Boolean).length,
+      openSeats: availableSeatCount(input.classroom),
+      emptySeats: Object.values(input.assignments).filter((value) => value === null).length,
+    },
+  }
+}
+
 export function generateSeatingPlan(input: {
   students: Student[]
   classroom: Classroom

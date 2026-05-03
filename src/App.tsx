@@ -40,6 +40,7 @@ import {
   sanitizeFixedAssignments,
   seatKey,
   studentCareLabel,
+  updatePlanAssignments,
 } from './lib/seating'
 
 const HISTORY_LIMIT = 24
@@ -66,6 +67,7 @@ function App() {
   const [draft, setDraft] = useState<StudentDraft>(emptyDraft)
   const [importText, setImportText] = useState('')
   const [selectedSeat, setSelectedSeat] = useState<string | null>(null)
+  const [swapTargetSeat, setSwapTargetSeat] = useState('')
   const [message, setMessage] = useState('準備完了')
   const importFileRef = useRef<HTMLInputElement | null>(null)
 
@@ -80,6 +82,15 @@ function App() {
   const previousHorizontalPairs = useMemo(() => new Set(previousPlan?.horizontalPairs ?? []), [previousPlan])
   const selectedFixedStudent = selectedSeat ? state.classroom.fixedAssignments[selectedSeat] : ''
   const selectedSeatLabel = selectedSeat ? seatLabel(selectedSeat) : '未選択'
+  const selectedSeatLocked = selectedSeat ? Boolean(state.classroom.fixedAssignments[selectedSeat]) : false
+  const swapSeatOptions = selectedSeat
+    ? seats.filter(
+        (key) =>
+          key !== selectedSeat &&
+          !unavailable.has(key) &&
+          !state.classroom.fixedAssignments[key],
+      )
+    : []
 
   const openSeatCount = seats.length - state.classroom.unavailableSeats.length
   const fixedCount = Object.keys(state.classroom.fixedAssignments).length
@@ -265,6 +276,49 @@ function App() {
       history: [...current.history, result.plan].slice(-HISTORY_LIMIT),
     }))
     setMessage('席替えを生成しました')
+  }
+
+  function selectSeat(key: string) {
+    setSelectedSeat(key)
+    setSwapTargetSeat('')
+  }
+
+  function swapSeats() {
+    if (!state.currentPlan || !selectedSeat || !swapTargetSeat) {
+      setMessage('入れ替える席を選んでください')
+      return
+    }
+    if (unavailable.has(selectedSeat) || unavailable.has(swapTargetSeat)) {
+      setMessage('使用不可席は入れ替えできません')
+      return
+    }
+    if (state.classroom.fixedAssignments[selectedSeat] || state.classroom.fixedAssignments[swapTargetSeat]) {
+      setMessage('固定席は入れ替えできません')
+      return
+    }
+
+    const assignments = { ...state.currentPlan.assignments }
+    const selectedStudent = assignments[selectedSeat] ?? null
+    assignments[selectedSeat] = assignments[swapTargetSeat] ?? null
+    assignments[swapTargetSeat] = selectedStudent
+
+    const updatedPlan = updatePlanAssignments({
+      plan: state.currentPlan,
+      assignments,
+      students: state.students,
+      classroom: state.classroom,
+      options: state.options,
+      history: state.history,
+    })
+
+    setState((current) => ({
+      ...current,
+      currentPlan: updatedPlan,
+      history: current.history.map((plan) => (plan.id === updatedPlan.id ? updatedPlan : plan)),
+    }))
+    setSelectedSeat(swapTargetSeat)
+    setSwapTargetSeat('')
+    setMessage('席を入れ替えました')
   }
 
   function loadPlan(plan: SeatingPlan) {
@@ -559,7 +613,7 @@ function App() {
                     student?.gender === 'boy' ? 'boy' : '',
                     student?.gender === 'girl' ? 'girl' : '',
                   ].join(' ')}
-                  onClick={() => setSelectedSeat(key)}
+                  onClick={() => selectSeat(key)}
                   title={`${row + 1}行 ${col + 1}列`}
                 >
                   <span className="seat-index">
@@ -603,6 +657,37 @@ function App() {
                     ))}
                   </select>
                 </label>
+                <div className="swap-editor">
+                  <label>
+                    入れ替え先
+                    <select
+                      value={swapTargetSeat}
+                      disabled={!state.currentPlan || unavailable.has(selectedSeat) || selectedSeatLocked}
+                      onChange={(event) => setSwapTargetSeat(event.target.value)}
+                    >
+                      <option value="">席を選択</option>
+                      {swapSeatOptions.map((key) => {
+                        const studentId = state.currentPlan?.assignments[key] ?? null
+                        const student = studentId ? studentsById.get(studentId) : null
+                        return (
+                          <option key={key} value={key}>
+                            {seatLabel(key)} / {student ? displayStudentName(student, state.rosterMode) : '空席'}
+                          </option>
+                        )
+                      })}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={swapSeats}
+                    disabled={!state.currentPlan || !swapTargetSeat || unavailable.has(selectedSeat) || selectedSeatLocked}
+                  >
+                    <Shuffle size={16} />
+                    入れ替え
+                  </button>
+                  {selectedSeatLocked ? <p>固定席は入れ替え対象外です</p> : null}
+                </div>
               </>
             ) : (
               <p>席を選択してください</p>

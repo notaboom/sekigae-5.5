@@ -510,6 +510,20 @@ textarea:focus-visible {
   font-size: 0.875rem;
 }
 
+.swap-editor {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+  min-width: min(100%, 380px);
+}
+
+.swap-editor p {
+  grid-column: 1 / -1;
+  color: var(--warning);
+  font-size: 0.75rem;
+}
+
 .slider-row {
   display: grid;
   grid-template-columns: 48px minmax(0, 1fr) 42px;
@@ -615,6 +629,10 @@ textarea:focus-visible {
   .seat-editor {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .swap-editor {
+    grid-template-columns: 1fr;
   }
 
   .top-actions,

@@ -86,3 +86,17 @@
 - スマホ幅でも5x6座席表が1画面幅に収まり、下部ステータスバーが内容に重ならない。
 - 手動入れ替え欄で選択席、入れ替え先、入れ替えボタンが横幅からはみ出さない。
 - リッチGUI前の復元タグ `manual-swap-before-rich-gui-20260503` が存在する。
+
+## 2026-05-03 ALERTS対象席の視覚化
+
+| チェック | 結果 | メモ |
+| --- | --- | --- |
+| `npm.cmd run verify` | pass | lint、10 tests、40 harness checks、build |
+| `npm.cmd run smoke:ui` | pass | 生成、席選択、手動入れ替え、30 tiles、行列select 100 options |
+| Playwright alert screenshot | pass | `output/playwright/sekigae-alert-targets.png` で30席の注意バッジ表示を確認 |
+
+## 追加確認観点
+
+- 同じ席、同じ隣接、左右ペア、空席のALERTSから対象座席を復元できる。
+- 対象席には `alert-target` と種類別classが付き、座席表上で注意バッジと強調枠が表示される。
+- ALERTSパネルには対象席ラベルの抜粋が表示される。

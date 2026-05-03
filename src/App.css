@@ -173,6 +173,10 @@
   background: var(--warning);
 }
 
+.legend-alert::before {
+  background: var(--danger);
+}
+
 .panel-heading {
   margin-bottom: 12px;
 }
@@ -591,9 +595,63 @@ textarea:focus-visible {
   box-shadow: inset 0 0 0 2px var(--danger);
 }
 
+.seat-tile.alert-target {
+  border-color: var(--danger);
+  box-shadow:
+    inset 0 0 0 2px var(--danger),
+    0 0 0 3px rgba(179, 38, 30, 0.13),
+    0 9px 18px rgba(22, 32, 51, 0.12);
+}
+
+.seat-tile.alert-horizontal {
+  border-color: #9f1239;
+  box-shadow:
+    inset 0 0 0 2px #9f1239,
+    0 0 0 3px rgba(159, 18, 57, 0.14),
+    0 9px 18px rgba(22, 32, 51, 0.12);
+}
+
+.seat-tile.alert-neighbor {
+  border-color: #b45309;
+  box-shadow:
+    inset 0 0 0 2px #b45309,
+    0 0 0 3px rgba(180, 83, 9, 0.14),
+    0 9px 18px rgba(22, 32, 51, 0.12);
+}
+
+.seat-tile.alert-empty {
+  border-style: dashed;
+  border-color: var(--warning);
+  box-shadow:
+    inset 0 0 0 2px rgba(161, 98, 7, 0.35),
+    0 0 0 3px rgba(161, 98, 7, 0.12),
+    0 9px 18px rgba(22, 32, 51, 0.1);
+}
+
 .seat-tile.selected {
   outline: 3px solid var(--focus);
   outline-offset: 1px;
+}
+
+.seat-alert-badge {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 2px 5px;
+  color: #ffffff !important;
+  background: var(--danger);
+  border-radius: 4px;
+  font-size: 0.62rem !important;
+  font-weight: 760;
+  line-height: 1;
+}
+
+.seat-tile.alert-empty .seat-alert-badge,
+.seat-tile.alert-neighbor .seat-alert-badge {
+  background: var(--warning);
 }
 
 .seat-lock {
@@ -787,6 +845,27 @@ textarea:focus-visible {
 .warning-item span {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.warning-item small {
+  color: #755217;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.warning-item.same-seat {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: #f2b8b5;
+}
+
+.warning-item.neighbor,
+.warning-item.horizontal,
+.warning-item.empty {
+  color: #5f3d08;
+  background: #fff7e6;
+  border-color: #f0d8a8;
 }
 
 .history-list {

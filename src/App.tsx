@@ -64,6 +64,15 @@ type ComparisonRow = {
   tone: ComparisonTone
 }
 
+type AlertKind = 'same-seat' | 'neighbor' | 'horizontal' | 'empty' | 'not-generated'
+
+type AlertItem = {
+  id: string
+  kind: AlertKind
+  label: string
+  seats: string[]
+}
+
 const emptyDraft: StudentDraft = {
   name: '',
   gender: 'boy',
@@ -90,6 +99,11 @@ function App() {
   const studentsById = useMemo(() => new Map(state.students.map((student) => [student.id, student])), [state.students])
   const previousPlan = useMemo(() => findPreviousPlan(state.currentPlan, state.history), [state.currentPlan, state.history])
   const previousHorizontalPairs = useMemo(() => new Set(previousPlan?.horizontalPairs ?? []), [previousPlan])
+  const alerts = useMemo(
+    () => buildAlerts(state.currentPlan, state.history, state.options.historyDepth, state.classroom),
+    [state.currentPlan, state.history, state.options.historyDepth, state.classroom],
+  )
+  const alertSeatMap = useMemo(() => buildAlertSeatMap(alerts), [alerts])
   const selectedFixedStudent = selectedSeat ? state.classroom.fixedAssignments[selectedSeat] : ''
   const selectedSeatLabel = selectedSeat ? seatLabel(selectedSeat) : '未選択'
   const selectedSeatLocked = selectedSeat ? Boolean(state.classroom.fixedAssignments[selectedSeat]) : false
@@ -393,7 +407,6 @@ function App() {
     )
   })
   const comparisonRows = buildComparisonRows(previousPlan, state.currentPlan)
-  const warnings = buildWarnings(state.currentPlan)
   const selectedSwapStudent = selectedSeat && state.currentPlan ? studentsById.get(state.currentPlan.assignments[selectedSeat] ?? '') : null
   const targetSwapStudent = swapTargetSeat && state.currentPlan ? studentsById.get(state.currentPlan.assignments[swapTargetSeat] ?? '') : null
 
@@ -612,6 +625,7 @@ function App() {
               <span className="legend-girl">女子</span>
               <span className="legend-repeat">再発</span>
               <span className="legend-fixed">固定</span>
+              <span className="legend-alert">注意</span>
             </div>
           </div>
 
@@ -627,6 +641,8 @@ function App() {
               const blocked = unavailable.has(key)
               const fixed = Boolean(state.classroom.fixedAssignments[key])
               const repeatedHorizontal = isHorizontalRepeat(key, state.currentPlan, previousHorizontalPairs)
+              const seatAlerts = alertSeatMap.get(key) ?? []
+              const alertKind = alertKindForSeat(seatAlerts)
               const selected = selectedSeat === key
               return (
                 <button
@@ -638,11 +654,13 @@ function App() {
                     fixed ? 'fixed' : '',
                     selected ? 'selected' : '',
                     repeatedHorizontal ? 'repeat' : '',
+                    seatAlerts.length > 0 ? 'alert-target' : '',
+                    alertKind ? `alert-${alertKind}` : '',
                     student?.gender === 'boy' ? 'boy' : '',
                     student?.gender === 'girl' ? 'girl' : '',
                   ].join(' ')}
                   onClick={() => selectSeat(key)}
-                  title={`${row + 1}行 ${col + 1}列`}
+                  title={`${row + 1}行 ${col + 1}列${seatAlerts.length > 0 ? ` / 注意: ${seatAlerts.join('、')}` : ''}`}
                 >
                   <span className="seat-index">
                     {row + 1}-{col + 1}
@@ -650,6 +668,7 @@ function App() {
                   <strong>{blocked ? '使用不可' : student ? displayStudentName(student, state.rosterMode) : '空席'}</strong>
                   <span>{student ? studentCareLabel(student) || genderLabel(student.gender) : fixed ? '固定' : ''}</span>
                   {fixed ? <Lock className="seat-lock" size={13} aria-hidden="true" /> : null}
+                  {seatAlerts.length > 0 ? <span className="seat-alert-badge">注意</span> : null}
                 </button>
               )
             })}
@@ -753,13 +772,14 @@ function App() {
                 <span className="kicker">Alerts</span>
                 <h2>注意</h2>
               </div>
-              <span className={warnings.length > 0 ? 'status-pill danger' : 'status-pill success'}>{warnings.length}件</span>
+              <span className={alerts.length > 0 ? 'status-pill danger' : 'status-pill success'}>{alerts.length}件</span>
             </div>
             <div className="warning-list">
-              {warnings.length === 0 ? <p>再発注意はありません</p> : null}
-              {warnings.map((warning) => (
-                <div className="warning-item" key={warning}>
-                  <span>{warning}</span>
+              {alerts.length === 0 ? <p>再発注意はありません</p> : null}
+              {alerts.map((alert) => (
+                <div className={`warning-item ${alert.kind}`} key={alert.id}>
+                  <span>{alert.label}</span>
+                  {alert.seats.length > 0 ? <small>{formatAlertSeats(alert.seats)}</small> : null}
                 </div>
               ))}
             </div>
@@ -1105,14 +1125,140 @@ function buildRateComparison(
   }
 }
 
-function buildWarnings(plan: SeatingPlan | null): string[] {
-  if (!plan) return ['まだ生成されていません']
-  const warnings: string[] = []
-  if (plan.diagnostics.sameSeatRepeats > 0) warnings.push(`同じ席の再発が ${plan.diagnostics.sameSeatRepeats} 件あります`)
-  if (plan.diagnostics.neighborRepeats > 0) warnings.push(`前回と同じ隣接が ${plan.diagnostics.neighborRepeats} 件あります`)
-  if (plan.diagnostics.horizontalPairRepeats > 0) warnings.push(`左右ペアの再発が ${plan.diagnostics.horizontalPairRepeats} 件あります`)
-  if (plan.diagnostics.emptySeats > 0) warnings.push(`空席が ${plan.diagnostics.emptySeats} 席あります`)
-  return warnings
+function buildAlerts(
+  plan: SeatingPlan | null,
+  history: SeatingPlan[],
+  historyDepth: number,
+  classroom: AppState['classroom'],
+): AlertItem[] {
+  if (!plan) return [{ id: 'not-generated', kind: 'not-generated', label: 'まだ生成されていません', seats: [] }]
+
+  const previousPlans = history.filter((item) => item.id !== plan.id).slice(-historyDepth)
+  const past = buildAlertHistoryIndex(previousPlans)
+  const unavailable = new Set(classroom.unavailableSeats)
+  const alerts: AlertItem[] = []
+
+  const sameSeatSeats = Object.entries(plan.assignments)
+    .filter(([key, studentId]) => Boolean(studentId && past.seatByStudent.get(studentId)?.has(key)))
+    .map(([key]) => key)
+    .sort(compareSeatKeys)
+
+  if (sameSeatSeats.length > 0) {
+    alerts.push({
+      id: 'same-seat',
+      kind: 'same-seat',
+      label: `同じ席の再発が ${sameSeatSeats.length} 件あります`,
+      seats: sameSeatSeats,
+    })
+  }
+
+  const neighborSeats = repeatedPairSeatKeys(plan.assignments, classroom, past.neighborPairs, 'all')
+  if (neighborSeats.length > 0) {
+    alerts.push({
+      id: 'neighbor',
+      kind: 'neighbor',
+      label: `前回と同じ隣接が ${neighborSeats.length} 席に関係しています`,
+      seats: neighborSeats,
+    })
+  }
+
+  const horizontalSeats = repeatedPairSeatKeys(plan.assignments, classroom, past.leftRightPairs, 'horizontal')
+  if (horizontalSeats.length > 0) {
+    alerts.push({
+      id: 'horizontal',
+      kind: 'horizontal',
+      label: `左右ペアの再発が ${horizontalSeats.length} 席に関係しています`,
+      seats: horizontalSeats,
+    })
+  }
+
+  const emptySeats = buildSeatList(classroom)
+    .filter((key) => !unavailable.has(key) && !plan.assignments[key])
+    .sort(compareSeatKeys)
+
+  if (emptySeats.length > 0) {
+    alerts.push({
+      id: 'empty',
+      kind: 'empty',
+      label: `空席が ${emptySeats.length} 席あります`,
+      seats: emptySeats,
+    })
+  }
+
+  return alerts
+}
+
+function buildAlertHistoryIndex(history: SeatingPlan[]) {
+  const seatByStudent = new Map<string, Set<string>>()
+  const neighborPairs = new Set<string>()
+  const leftRightPairs = new Set<string>()
+
+  history.forEach((plan) => {
+    Object.entries(plan.assignments).forEach(([key, studentId]) => {
+      if (!studentId) return
+      if (!seatByStudent.has(studentId)) seatByStudent.set(studentId, new Set())
+      seatByStudent.get(studentId)?.add(key)
+    })
+    plan.pairs.forEach((pair) => neighborPairs.add(pair))
+    plan.horizontalPairs.forEach((pair) => leftRightPairs.add(pair))
+  })
+
+  return { seatByStudent, neighborPairs, leftRightPairs }
+}
+
+function buildAlertSeatMap(alerts: AlertItem[]): Map<string, string[]> {
+  const map = new Map<string, string[]>()
+  alerts.forEach((alert) => {
+    alert.seats.forEach((seat) => {
+      const labels = map.get(seat) ?? []
+      labels.push(alert.label)
+      map.set(seat, labels)
+    })
+  })
+  return map
+}
+
+function repeatedPairSeatKeys(
+  assignments: Record<string, string | null>,
+  classroom: Pick<AppState['classroom'], 'rows' | 'cols'>,
+  pastPairs: Set<string>,
+  mode: 'all' | 'horizontal',
+): string[] {
+  const seats = new Set<string>()
+  for (let row = 0; row < classroom.rows; row += 1) {
+    for (let col = 0; col < classroom.cols; col += 1) {
+      const here = seatKey(row, col)
+      const candidates = mode === 'horizontal' ? [seatKey(row, col + 1)] : [seatKey(row, col + 1), seatKey(row + 1, col)]
+      candidates.forEach((other) => {
+        if (!pairExists(assignments[here], assignments[other], pastPairs)) return
+        seats.add(here)
+        seats.add(other)
+      })
+    }
+  }
+  return Array.from(seats).sort(compareSeatKeys)
+}
+
+function alertKindForSeat(labels: string[]): AlertKind | null {
+  if (labels.length === 0) return null
+  if (labels.some((label) => label.includes('同じ席'))) return 'same-seat'
+  if (labels.some((label) => label.includes('左右ペア'))) return 'horizontal'
+  if (labels.some((label) => label.includes('隣接'))) return 'neighbor'
+  if (labels.some((label) => label.includes('空席'))) return 'empty'
+  return 'neighbor'
+}
+
+function formatAlertSeats(seats: string[]): string {
+  const labels = seats.slice(0, 8).map(seatLabel)
+  const remaining = seats.length - labels.length
+  return remaining > 0 ? `${labels.join('、')} ほか${remaining}席` : labels.join('、')
+}
+
+function compareSeatKeys(left: string, right: string): number {
+  const [leftRow, leftCol] = parseSeatKey(left)
+  const [rightRow, rightCol] = parseSeatKey(right)
+  if (leftRow !== rightRow) return leftRow - rightRow
+  return leftCol - rightCol
 }
 
 function loadState(): AppState {

@@ -25,8 +25,10 @@ import {
   type SeatingPlan,
   type Student,
   type VisionNeed,
+  DEFAULT_RECURRENCE_HISTORY_DEPTH,
   DEFAULT_OPTIONS,
-  RECURRENCE_HISTORY_DEPTH,
+  MAX_RECURRENCE_HISTORY_DEPTH,
+  RECURRENCE_HISTORY_DEPTH_OPTIONS,
   STORAGE_KEY,
   availableSeatCount,
   buildSeatList,
@@ -807,12 +809,10 @@ function App() {
               step={20}
               onChange={(improvementSteps) => updateOptions({ improvementSteps })}
             />
-            <OptionSlider
-              label="履歴"
+            <OptionSelect
+              label="再発判定"
               value={state.options.historyDepth}
-              min={1}
-              max={RECURRENCE_HISTORY_DEPTH}
-              step={1}
+              options={RECURRENCE_HISTORY_DEPTH_OPTIONS.map((count) => ({ value: count, label: `過去${count}回` }))}
               onChange={(historyDepth) => updateOptions({ historyDepth })}
             />
             <OptionSlider
@@ -1001,6 +1001,32 @@ function OptionSlider({
       <span>{label}</span>
       <input type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} />
       <strong>{value}</strong>
+    </label>
+  )
+}
+
+function OptionSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  value: number
+  options: { value: number; label: string }[]
+  onChange: (value: number) => void
+}) {
+  return (
+    <label className="select-row">
+      <span>{label}</span>
+      <select aria-label={`${label}の参照回数`} value={value} onChange={(event) => onChange(Number(event.target.value))}>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <strong>{value}回</strong>
     </label>
   )
 }
@@ -1415,8 +1441,8 @@ function clamp(value: number, min: number, max: number): number {
 
 function clampRecurrenceDepth(value: number): number {
   const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return RECURRENCE_HISTORY_DEPTH
-  return clamp(Math.round(numeric), 1, RECURRENCE_HISTORY_DEPTH)
+  if (!Number.isFinite(numeric)) return DEFAULT_RECURRENCE_HISTORY_DEPTH
+  return clamp(Math.round(numeric), 1, MAX_RECURRENCE_HISTORY_DEPTH)
 }
 
 export default App

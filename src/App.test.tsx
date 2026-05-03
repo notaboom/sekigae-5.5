@@ -36,6 +36,18 @@ describe('App', () => {
     expect(screen.getByText(/^score\s+-?\d+/)).toBeTruthy()
   })
 
+  it('allows the recurrence alert reference count to be selected', () => {
+    render(<App />)
+
+    const select = screen.getByLabelText('再発判定の参照回数') as HTMLSelectElement
+    expect(select.value).toBe('3')
+
+    fireEvent.change(select, { target: { value: '5' } })
+
+    expect(select.value).toBe('5')
+    expect(localStorage.getItem(STORAGE_KEY)).toContain('"historyDepth":5')
+  })
+
   it('allows a generated seat to be swapped manually', () => {
     render(<App />)
 

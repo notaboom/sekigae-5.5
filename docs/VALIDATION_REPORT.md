@@ -126,3 +126,16 @@
 - 再発判定は、保存履歴数や保存済み設定値に関係なく直近3回までを上限にする。
 - 生成ロジック、手動入れ替え後の再診断、ALERTS表示、旧localStorage移行診断で同じ上限を使う。
 - 利用者向けURLは `notaboom/sekigae` を継続反映先として扱う。
+
+## 2026-05-03 再発参照回数の選択
+
+| チェック | 結果 | メモ |
+| --- | --- | --- |
+| `npm.cmd run verify` | pass | lint、14 tests、40 harness checks、build |
+| `npm.cmd run smoke:ui` | pass | 生成、30 tiles、行列select 100 options |
+
+## 追加確認観点
+
+- 再発判定の既定値は過去3回のまま。
+- 画面から過去1回〜過去24回を選べる。
+- 選んだ参照回数は、生成ロジック、手動入れ替え後の再診断、ALERTS表示、旧localStorage移行診断で使われる。

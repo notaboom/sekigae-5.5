@@ -110,7 +110,7 @@ describe('generateSeatingPlan', () => {
     expect(result.plan.horizontalPairs.length).toBeGreaterThan(0)
   })
 
-  it('caps recurrence checks to the latest three histories', () => {
+  it('respects the selected recurrence history depth', () => {
     const students = [makeStudent('あおい'), makeStudent('はると')]
     const classroom = { rows: 1, cols: 4, unavailableSeats: [], fixedAssignments: {} }
     const olderRepeat = makePlan('older-repeat', classroom, {
@@ -139,18 +139,31 @@ describe('generateSeatingPlan', () => {
     })
     const current = makePlan('current', classroom, olderRepeat.assignments)
 
-    const updated = updatePlanAssignments({
+    const latestThree = updatePlanAssignments({
       plan: current,
       assignments: current.assignments,
       students,
       classroom,
-      options: { ...DEFAULT_OPTIONS, historyDepth: 24 },
+      options: { ...DEFAULT_OPTIONS, historyDepth: 3 },
       history: [olderRepeat, recentA, recentB, recentC, current],
     })
 
-    expect(updated.diagnostics.sameSeatRepeats).toBe(0)
-    expect(updated.diagnostics.neighborRepeats).toBe(0)
-    expect(updated.diagnostics.horizontalPairRepeats).toBe(0)
+    expect(latestThree.diagnostics.sameSeatRepeats).toBe(0)
+    expect(latestThree.diagnostics.neighborRepeats).toBe(0)
+    expect(latestThree.diagnostics.horizontalPairRepeats).toBe(0)
+
+    const latestFour = updatePlanAssignments({
+      plan: current,
+      assignments: current.assignments,
+      students,
+      classroom,
+      options: { ...DEFAULT_OPTIONS, historyDepth: 4 },
+      history: [olderRepeat, recentA, recentB, recentC, current],
+    })
+
+    expect(latestFour.diagnostics.sameSeatRepeats).toBe(2)
+    expect(latestFour.diagnostics.neighborRepeats).toBe(1)
+    expect(latestFour.diagnostics.horizontalPairRepeats).toBe(1)
   })
 })
 

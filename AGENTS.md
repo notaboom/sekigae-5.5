@@ -34,4 +34,4 @@
 - GitHub Pages は `.github/workflows/pages.yml` で `dist/` を公開する。
 - 作業後は差分を確認してからコミットし、`main` を `origin` にpushする。
 - 利用者向けURLは旧 `notaboom/sekigae` 側を継続利用するため、機能変更後は `sekigae-5.5` だけで終わらせず、`VITE_BASE_PATH=/sekigae/` でビルドした `dist/` を `D:\claude\projects\sekigae` に反映し、`notaboom/sekigae` の `main` へpushする。
-- 再発注意の判定対象は、保存履歴数に関係なく直近3回までを上限にする。
+- 再発注意の判定対象は、既定では直近3回とし、先生が画面上で参照回数を選べるようにする。

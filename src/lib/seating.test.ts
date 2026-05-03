@@ -56,6 +56,7 @@ describe('generateSeatingPlan', () => {
         unavailableSeats: [seatKey(1, 2)],
         fixedAssignments: { [seatKey(0, 0)]: students[0].id },
       },
+      separationRules: [],
       options: { ...DEFAULT_OPTIONS, trials: 30, improvementSteps: 60 },
       history: [],
       seed: 55,
@@ -80,6 +81,7 @@ describe('generateSeatingPlan', () => {
         unavailableSeats: [],
         fixedAssignments: {},
       },
+      separationRules: [],
       options: DEFAULT_OPTIONS,
       history: [],
       seed: 12,
@@ -99,6 +101,7 @@ describe('generateSeatingPlan', () => {
         unavailableSeats: [],
         fixedAssignments: {},
       },
+      separationRules: [],
       options: { ...DEFAULT_OPTIONS, trials: 20, improvementSteps: 40 },
       history: [],
       seed: 77,
@@ -108,6 +111,27 @@ describe('generateSeatingPlan', () => {
     if (!result.ok) return
     expect(adjacencyPairs(result.plan.assignments, result.plan)).toEqual(result.plan.pairs)
     expect(result.plan.horizontalPairs.length).toBeGreaterThan(0)
+  })
+
+  it('counts adjacent students who are marked as separated', () => {
+    const pair = [makeStudent('あおい'), makeStudent('はると')]
+    const result = generateSeatingPlan({
+      students: pair,
+      classroom: {
+        rows: 1,
+        cols: 2,
+        unavailableSeats: [],
+        fixedAssignments: {},
+      },
+      separationRules: [{ id: 'rule-1', leftStudentId: pair[0].id, rightStudentId: pair[1].id, note: '相性' }],
+      options: { ...DEFAULT_OPTIONS, trials: 1, improvementSteps: 0 },
+      history: [],
+      seed: 1,
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.plan.diagnostics.separationViolations).toBe(1)
   })
 
   it('respects the selected recurrence history depth', () => {
@@ -144,6 +168,7 @@ describe('generateSeatingPlan', () => {
       assignments: current.assignments,
       students,
       classroom,
+      separationRules: [],
       options: { ...DEFAULT_OPTIONS, historyDepth: 3 },
       history: [olderRepeat, recentA, recentB, recentC, current],
     })
@@ -157,6 +182,7 @@ describe('generateSeatingPlan', () => {
       assignments: current.assignments,
       students,
       classroom,
+      separationRules: [],
       options: { ...DEFAULT_OPTIONS, historyDepth: 4 },
       history: [olderRepeat, recentA, recentB, recentC, current],
     })
@@ -190,6 +216,7 @@ function makePlan(
       sameSeatRepeats: 0,
       neighborRepeats: 0,
       horizontalPairRepeats: 0,
+      separationViolations: 0,
       frontNeedFrontHalf: 0,
       frontNeedTotal: 0,
       tallBackHalf: 0,

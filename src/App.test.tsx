@@ -48,6 +48,24 @@ describe('App', () => {
     expect(localStorage.getItem(STORAGE_KEY)).toContain('"historyDepth":5')
   })
 
+  it('saves classroom templates and separated-student rules', () => {
+    render(<App />)
+
+    fireEvent.change(screen.getByLabelText('テンプレート名'), { target: { value: '音楽室' } })
+    fireEvent.click(screen.getAllByRole('button', { name: '保存' })[1])
+    expect(screen.getAllByText('音楽室').length).toBeGreaterThan(0)
+
+    const left = screen.getByLabelText('離す児童A') as HTMLSelectElement
+    const right = screen.getByLabelText('離す児童B') as HTMLSelectElement
+    fireEvent.change(left, { target: { value: left.options[1].value } })
+    fireEvent.change(right, { target: { value: right.options[2].value } })
+    fireEvent.change(screen.getByLabelText('離す理由メモ'), { target: { value: '集中' } })
+    fireEvent.click(screen.getByRole('button', { name: '追加' }))
+
+    expect(screen.getByText(/1番 \/ 2番/)).toBeTruthy()
+    expect(screen.getByText('集中')).toBeTruthy()
+  })
+
   it('allows a generated seat to be swapped manually', () => {
     render(<App />)
 
@@ -57,6 +75,15 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: '入れ替え' }))
 
     expect(screen.getByText('席を入れ替えました')).toBeTruthy()
+  })
+
+  it('records local migration check results on demand', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: '確認' }))
+
+    expect(screen.getAllByText('この端末の移行状態を確認しました').length).toBeGreaterThan(0)
+    expect(localStorage.getItem(STORAGE_KEY)).toContain('"migrationAudit"')
   })
 
   it('switches to name mode when the teacher wants a named roster', () => {
@@ -82,7 +109,8 @@ describe('App', () => {
         ...previousPlan.diagnostics,
         sameSeatRepeats: seats.length,
         neighborRepeats: previousPlan.pairs.length,
-        horizontalPairRepeats: previousPlan.horizontalPairs.length,
+      horizontalPairRepeats: previousPlan.horizontalPairs.length,
+      separationViolations: 0,
       },
     }
 
@@ -149,6 +177,7 @@ function makeTestPlan(
       sameSeatRepeats: 0,
       neighborRepeats: 0,
       horizontalPairRepeats: 0,
+      separationViolations: 0,
       frontNeedFrontHalf: 0,
       frontNeedTotal: 0,
       tallBackHalf: 0,

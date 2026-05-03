@@ -11,6 +11,7 @@
     "test": "vitest run",
     "harness": "node scripts/validate-project.mjs",
     "smoke:ui": "node scripts/smoke-ui.mjs",
+    "verify:sekigae": "node scripts/verify-sekigae-reflection.mjs",
     "verify": "npm run lint && npm run test && npm run harness && npm run build",
     "preview": "vite preview --host 127.0.0.1 --port 4175"
   },

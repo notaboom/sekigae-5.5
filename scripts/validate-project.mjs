@@ -31,7 +31,7 @@ for (const file of requiredFiles) {
 }
 
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
-for (const script of ['lint', 'test', 'harness', 'smoke:ui', 'verify', 'build']) {
+for (const script of ['lint', 'test', 'harness', 'smoke:ui', 'verify', 'verify:sekigae', 'build']) {
   assertCheck(`script:${script}`, Boolean(packageJson.scripts?.[script]))
 }
 
@@ -58,6 +58,11 @@ const appSource = fs.readFileSync(path.join(root, 'src/App.tsx'), 'utf8')
 for (const token of ['data-testid="generate-button"', 'window.print()', 'exportPlanCsv', 'localStorage']) {
   assertCheck(`app:${token}`, appSource.includes(token))
 }
+for (const token of ['SeparationRuleEditor', 'buildPlanPdf', 'MigrationStatus', 'AlertDetailPanel']) {
+  assertCheck(`app:backlog:${token}`, appSource.includes(token))
+}
+
+assertCheck('required:scripts/verify-sekigae-reflection.mjs', fs.existsSync(path.join(root, 'scripts/verify-sekigae-reflection.mjs')))
 
 const failed = checks.filter((check) => !check.ok)
 const summary = {

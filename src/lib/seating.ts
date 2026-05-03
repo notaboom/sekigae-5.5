@@ -20,6 +20,29 @@ export type Classroom = {
   fixedAssignments: Record<string, string>
 }
 
+export type SeparationRule = {
+  id: string
+  leftStudentId: string
+  rightStudentId: string
+  note: string
+}
+
+export type ClassroomTemplate = {
+  id: string
+  name: string
+  classroom: Classroom
+}
+
+export type MigrationAudit = {
+  checkedAt: string
+  legacyKeyPresent: boolean
+  workspaceKeyPresent: boolean
+  migratedCount: number
+  pendingCount: number
+  historyCount: number
+  note: string
+}
+
 export type SeatingOptions = {
   trials: number
   improvementSteps: number
@@ -54,6 +77,7 @@ export type PlanDiagnostics = {
   sameSeatRepeats: number
   neighborRepeats: number
   horizontalPairRepeats: number
+  separationViolations: number
   frontNeedFrontHalf: number
   frontNeedTotal: number
   tallBackHalf: number
@@ -64,9 +88,12 @@ export type AppState = {
   rosterMode: RosterMode
   students: Student[]
   classroom: Classroom
+  classroomTemplates: ClassroomTemplate[]
+  separationRules: SeparationRule[]
   options: SeatingOptions
   currentPlan: SeatingPlan | null
   history: SeatingPlan[]
+  migrationAudit: MigrationAudit | null
 }
 
 export type GenerateResult =
@@ -105,9 +132,12 @@ export function createInitialState(): AppState {
     rosterMode: 'attendance',
     students: DEFAULT_STUDENTS,
     classroom: DEFAULT_CLASSROOM,
+    classroomTemplates: [],
+    separationRules: [],
     options: DEFAULT_OPTIONS,
     currentPlan: null,
     history: [],
+    migrationAudit: null,
   }
 }
 
@@ -164,6 +194,10 @@ export function seatKey(row: number, col: number): string {
 export function parseSeatKey(key: string): [number, number] {
   const [row, col] = key.split('-').map((part) => Number(part))
   return [Number.isFinite(row) ? row : 0, Number.isFinite(col) ? col : 0]
+}
+
+export function studentPairKey(left: string, right: string): string {
+  return left < right ? `${left}|${right}` : `${right}|${left}`
 }
 
 export function normalizeGender(raw: string): Gender {
@@ -227,6 +261,7 @@ export function updatePlanAssignments(input: {
   assignments: Record<string, string | null>
   students: Student[]
   classroom: Classroom
+  separationRules: SeparationRule[]
   options: SeatingOptions
   history: SeatingPlan[]
 }): SeatingPlan {
@@ -236,7 +271,14 @@ export function updatePlanAssignments(input: {
     input.history.filter((plan) => plan.id !== input.plan.id),
     input.options.historyDepth,
   )
-  const evaluation = scoreAssignments(input.assignments, studentsById, input.classroom, input.options, past)
+  const evaluation = scoreAssignments(
+    input.assignments,
+    studentsById,
+    input.classroom,
+    input.options,
+    past,
+    input.separationRules,
+  )
   return {
     ...input.plan,
     title: input.plan.title.includes('手動調整') ? input.plan.title : `${input.plan.title}（手動調整）`,
@@ -256,6 +298,7 @@ export function updatePlanAssignments(input: {
 export function generateSeatingPlan(input: {
   students: Student[]
   classroom: Classroom
+  separationRules: SeparationRule[]
   options: SeatingOptions
   history: SeatingPlan[]
   seed?: number
@@ -298,7 +341,7 @@ export function generateSeatingPlan(input: {
     })
 
     const swappableSeats = movableSeats.slice()
-    let currentScore = scoreAssignments(assignments, studentsById, input.classroom, input.options, past).score
+    let currentScore = scoreAssignments(assignments, studentsById, input.classroom, input.options, past, input.separationRules).score
 
     for (let step = 0; step < input.options.improvementSteps; step += 1) {
       const left = Math.floor(rng() * swappableSeats.length)
@@ -311,7 +354,7 @@ export function generateSeatingPlan(input: {
       assignments[leftKey] = assignments[rightKey]
       assignments[rightKey] = before
 
-      const nextScore = scoreAssignments(assignments, studentsById, input.classroom, input.options, past).score
+      const nextScore = scoreAssignments(assignments, studentsById, input.classroom, input.options, past, input.separationRules).score
       if (nextScore >= currentScore) {
         currentScore = nextScore
       } else {
@@ -321,7 +364,7 @@ export function generateSeatingPlan(input: {
       }
     }
 
-    const evaluation = scoreAssignments(assignments, studentsById, input.classroom, input.options, past)
+    const evaluation = scoreAssignments(assignments, studentsById, input.classroom, input.options, past, input.separationRules)
     const plan = makePlan(assignments, evaluation, input.classroom, input.seed ?? Date.now(), students.length)
     if (!best || plan.score > best.score) best = plan
   }
@@ -482,6 +525,7 @@ function scoreAssignments(
   classroom: Classroom,
   options: SeatingOptions,
   past: ReturnType<typeof buildHistoryIndex>,
+  separationRules: SeparationRule[],
 ): { score: number; diagnostics: PlanDiagnostics } {
   let score = 0
   let sameSeatRepeats = 0
@@ -518,7 +562,14 @@ function scoreAssignments(
   const horizontal = horizontalPairs(assignments, classroom)
   const neighborRepeats = pairs.filter((pair) => past.neighborPairs.has(pair)).length
   const horizontalPairRepeats = horizontal.filter((pair) => past.leftRightPairs.has(pair)).length
+  const separationPairs = new Set(
+    separationRules
+      .filter((rule) => rule.leftStudentId && rule.rightStudentId && rule.leftStudentId !== rule.rightStudentId)
+      .map((rule) => studentPairKey(rule.leftStudentId, rule.rightStudentId)),
+  )
+  const separationViolations = pairs.filter((pair) => separationPairs.has(pair)).length
   score -= neighborRepeats * options.neighborPenalty
+  score -= separationViolations * 60
 
   for (let row = 0; row < classroom.rows; row += 1) {
     for (let col = 0; col < classroom.cols; col += 1) {
@@ -551,6 +602,7 @@ function scoreAssignments(
       sameSeatRepeats,
       neighborRepeats,
       horizontalPairRepeats,
+      separationViolations,
       frontNeedFrontHalf,
       frontNeedTotal,
       tallBackHalf,
@@ -600,7 +652,7 @@ function seatSortForStudent(leftKey: string, rightKey: string): number {
 
 function addPair(pairs: Set<string>, left?: string | null, right?: string | null): void {
   if (!left || !right || left === right) return
-  pairs.add(left < right ? `${left}|${right}` : `${right}|${left}`)
+  pairs.add(studentPairKey(left, right))
 }
 
 function shuffle<T>(items: T[], rng: () => number): T[] {

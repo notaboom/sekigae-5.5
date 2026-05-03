@@ -16,15 +16,21 @@
 - デフォルトは出席番号方式で、使える席数に合わせて番号を自動作成
 - 出席番号方式と名前方式の新規追加は、性別の初期値を男子に設定
 - 教室の行列変更、使用不可席、固定席
+- 教室テンプレートの複数保存と呼び出し
 - 行/列はスマホでも操作しやすい1〜100の選択式
 - 視力配慮、身長配慮、過去と同じ席/隣の回避、任意の男女ペア配慮
+- 「この児童同士は離す」ルールによる隣接回避
 - 再発注意の参照回数を1〜24回から選択可能。既定値は直近3回
 - 生成履歴、過去と同じ左右ペアの表示
 - 生成後の席を選択し、別の席と手動で入れ替え
 - 生成画像3を元にしたリッチGUI: 三列ワークベンチ、座席ビュータブ、凡例、比較サマリー、注意パネル、下部ステータスバー
 - ALERTSがある場合、対象席を座席表上で注意バッジと強調枠により可視化
+- ALERTS対象席のクリックで右側パネルの該当注意を強調
+- 比較詳細で、再発している席や児童ペアを具体表示
+- 生成結果の児童別理由表示
 - 旧 `notaboom/sekigae` の `localStorage` キー `seat_shuffle_demo_v1` を初回起動時に自動移行
-- JSON保存/読込、座席CSV、A4印刷
+- 旧URL移行状態を端末ごとに確認
+- JSON保存/読込、座席CSV、A4印刷、PDF書き出し
 - public GitHub Pagesで使える静的配信
 
 ## セットアップ
@@ -52,6 +58,7 @@ npm.cmd run preview
 | `npm.cmd run build` | TypeScript + Vite build |
 | `npm.cmd run smoke:ui` | Playwrightで生成フローを確認 |
 | `npm.cmd run verify` | lint、test、harness、build |
+| `npm.cmd run verify:sekigae` | `/sekigae/` ビルドが利用者向け `sekigae` リポジトリに反映されているか確認 |
 
 最新結果は `docs/VALIDATION_REPORT.md` に記録します。
 

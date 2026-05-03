@@ -37,12 +37,17 @@ try {
   page.on('pageerror', (error) => consoleMessages.push(`pageerror: ${error.message}`))
 
   await page.goto(url, { waitUntil: 'networkidle' })
+  await page.getByLabel('再発判定の参照回数').selectOption('5')
+  await page.getByLabel('テンプレート名').fill('基本教室')
+  await page.locator('.template-tools').getByRole('button', { name: '保存' }).click()
   await page.getByTestId('generate-button').click()
   await page.getByText('席替えを生成しました').waitFor()
+  await page.getByRole('button', { name: '詳細' }).click()
   await page.locator('.seat-tile').first().click()
   await page.getByLabel('入れ替え先').selectOption('0-1')
   await page.getByRole('button', { name: '入れ替え' }).click()
   await page.getByText('席を入れ替えました').waitFor()
+  await page.locator('.panel').filter({ hasText: '移行確認' }).getByRole('button', { name: '確認' }).click()
   await page.screenshot({ path: path.join(outputDir, 'sekigae-home.png'), fullPage: true })
 
   const sizeSelects = page.locator('.field-grid.two select')
@@ -52,6 +57,9 @@ try {
   const tileCount = await page.locator('.seat-tile').count()
   const firstStudentVisible = await page.getByText('1番').count()
   const attendanceModeVisible = await page.getByRole('button', { name: '出席番号方式' }).count()
+  const templateVisible = await page.getByText('基本教室').count()
+  await page.setViewportSize({ width: 1024, height: 768 })
+  await page.screenshot({ path: path.join(outputDir, 'sekigae-ipad-landscape.png'), fullPage: true })
   await page.setViewportSize({ width: 390, height: 844 })
   await page.screenshot({ path: path.join(outputDir, 'sekigae-mobile.png'), fullPage: true })
   await browser.close()
@@ -60,6 +68,7 @@ try {
   if (tileCount < 20) throw new Error(`seat tile count is too small: ${tileCount}`)
   if (firstStudentVisible < 1) throw new Error('default roster did not render')
   if (attendanceModeVisible < 1) throw new Error('attendance roster mode did not render')
+  if (templateVisible < 1) throw new Error('classroom template was not saved')
   if (rowOptionCount !== 100 || maxRowOption !== '100') throw new Error('classroom size selects must provide 1-100 options')
   if (consoleMessages.length > 0) throw new Error(consoleMessages.join('\n'))
 
@@ -70,7 +79,11 @@ try {
         url,
         tileCount,
         rowOptionCount,
-        screenshots: ['output/playwright/sekigae-home.png', 'output/playwright/sekigae-mobile.png'],
+        screenshots: [
+          'output/playwright/sekigae-home.png',
+          'output/playwright/sekigae-ipad-landscape.png',
+          'output/playwright/sekigae-mobile.png',
+        ],
       },
       null,
       2,

@@ -73,9 +73,20 @@ export function migrateLegacyState(input: unknown): AppState | null {
     rosterMode: 'name',
     students,
     classroom,
+    classroomTemplates: [],
+    separationRules: [],
     options,
     currentPlan: currentPlan ?? history.at(-1) ?? null,
     history: currentPlan && !history.some((plan) => plan.id === currentPlan.id) ? [...history, currentPlan] : history,
+    migrationAudit: {
+      checkedAt: new Date().toISOString(),
+      legacyKeyPresent: true,
+      workspaceKeyPresent: false,
+      migratedCount: 1,
+      pendingCount: 0,
+      historyCount: history.length,
+      note: '旧版localStorageから自動移行しました',
+    },
   }
 }
 
@@ -237,6 +248,7 @@ function buildDiagnostics(
     sameSeatRepeats,
     neighborRepeats: pairs.filter((pair) => previousPairs.has(pair)).length,
     horizontalPairRepeats: leftRightPairs.filter((pair) => previousHorizontal.has(pair)).length,
+    separationViolations: 0,
     frontNeedFrontHalf,
     frontNeedTotal,
     tallBackHalf,

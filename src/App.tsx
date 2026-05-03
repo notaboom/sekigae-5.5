@@ -1,6 +1,7 @@
 import {
   Download,
   FileDown,
+  FileText,
   FileUp,
   History,
   Lock,
@@ -18,11 +19,15 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import {
   type AppState,
+  type Classroom,
+  type ClassroomTemplate,
   type Gender,
   type HeightNeed,
+  type MigrationAudit,
   type RosterMode,
   type SeatingOptions,
   type SeatingPlan,
+  type SeparationRule,
   type Student,
   type VisionNeed,
   DEFAULT_RECURRENCE_HISTORY_DEPTH,
@@ -43,6 +48,7 @@ import {
   sanitizeFixedAssignments,
   seatKey,
   studentCareLabel,
+  studentPairKey,
   updatePlanAssignments,
 } from './lib/seating'
 import { LEGACY_STORAGE_KEY, migrateLegacyState } from './lib/legacyMigration'
@@ -68,13 +74,32 @@ type ComparisonRow = {
   tone: ComparisonTone
 }
 
-type AlertKind = 'same-seat' | 'neighbor' | 'horizontal' | 'empty' | 'not-generated'
+type AlertKind = 'same-seat' | 'neighbor' | 'horizontal' | 'separation' | 'empty' | 'not-generated'
 
 type AlertItem = {
   id: string
   kind: AlertKind
   label: string
   seats: string[]
+}
+
+type SeparationDraft = {
+  leftStudentId: string
+  rightStudentId: string
+  note: string
+}
+
+type AlertDetail = {
+  alertId: string
+  title: string
+  lines: string[]
+}
+
+type StudentReason = {
+  studentId: string
+  label: string
+  seat: string
+  reasons: string[]
 }
 
 const emptyDraft: StudentDraft = {
@@ -85,13 +110,23 @@ const emptyDraft: StudentDraft = {
   note: '',
 }
 
+const emptySeparationDraft: SeparationDraft = {
+  leftStudentId: '',
+  rightStudentId: '',
+  note: '',
+}
+
 function App() {
   const [initialLoad] = useState(() => loadState())
   const [state, setState] = useState<AppState>(initialLoad.state)
   const [draft, setDraft] = useState<StudentDraft>(emptyDraft)
+  const [separationDraft, setSeparationDraft] = useState<SeparationDraft>(emptySeparationDraft)
+  const [templateName, setTemplateName] = useState('')
   const [importText, setImportText] = useState('')
   const [selectedSeat, setSelectedSeat] = useState<string | null>(null)
   const [swapTargetSeat, setSwapTargetSeat] = useState('')
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [activeAlertId, setActiveAlertId] = useState<string | null>(null)
   const [message, setMessage] = useState(initialLoad.migratedLegacy ? '旧版データを引き継ぎました' : '準備完了')
   const importFileRef = useRef<HTMLInputElement | null>(null)
 
@@ -105,10 +140,35 @@ function App() {
   const previousPlan = useMemo(() => findPreviousPlan(state.currentPlan, state.history), [state.currentPlan, state.history])
   const previousHorizontalPairs = useMemo(() => new Set(previousPlan?.horizontalPairs ?? []), [previousPlan])
   const alerts = useMemo(
-    () => buildAlerts(state.currentPlan, state.history, state.options.historyDepth, state.classroom),
-    [state.currentPlan, state.history, state.options.historyDepth, state.classroom],
+    () => buildAlerts(state.currentPlan, state.history, state.options.historyDepth, state.classroom, state.separationRules),
+    [state.currentPlan, state.history, state.options.historyDepth, state.classroom, state.separationRules],
   )
   const alertSeatMap = useMemo(() => buildAlertSeatMap(alerts), [alerts])
+  const alertDetails = useMemo(
+    () =>
+      buildAlertDetails(
+        state.currentPlan,
+        state.history,
+        state.options.historyDepth,
+        state.classroom,
+        state.separationRules,
+        studentsById,
+      ),
+    [state.currentPlan, state.history, state.options.historyDepth, state.classroom, state.separationRules, studentsById],
+  )
+  const studentReasons = useMemo(
+    () =>
+      buildStudentReasons(
+        state.currentPlan,
+        state.history,
+        state.options.historyDepth,
+        state.classroom,
+        state.separationRules,
+        studentsById,
+        state.rosterMode,
+      ),
+    [state.currentPlan, state.history, state.options.historyDepth, state.classroom, state.separationRules, studentsById, state.rosterMode],
+  )
   const selectedFixedStudent = selectedSeat ? state.classroom.fixedAssignments[selectedSeat] : ''
   const selectedSeatLabel = selectedSeat ? seatLabel(selectedSeat) : '未選択'
   const selectedSeatLocked = selectedSeat ? Boolean(state.classroom.fixedAssignments[selectedSeat]) : false
@@ -210,6 +270,7 @@ function App() {
         ...current,
         students: current.students.filter((student) => student.id !== id),
         classroom: { ...current.classroom, fixedAssignments },
+        separationRules: current.separationRules.filter((rule) => rule.leftStudentId !== id && rule.rightStudentId !== id),
       }
     })
     setMessage('児童を削除しました')
@@ -287,10 +348,96 @@ function App() {
     setState((current) => ({ ...current, options: { ...current.options, ...patch } }))
   }
 
+  function saveClassroomTemplate() {
+    const name = templateName.trim() || `${state.classroom.rows}x${state.classroom.cols} 教室`
+    const template: ClassroomTemplate = {
+      id: makeLocalId('template'),
+      name,
+      classroom: cloneClassroom(state.classroom),
+    }
+    setState((current) => ({ ...current, classroomTemplates: [...current.classroomTemplates, template].slice(-12) }))
+    setTemplateName('')
+    setMessage('教室テンプレートを保存しました')
+  }
+
+  function applyClassroomTemplate(templateId: string) {
+    const template = state.classroomTemplates.find((item) => item.id === templateId)
+    if (!template) return
+    setState((current) => {
+      const classroom = cloneClassroom(template.classroom)
+      const students =
+        current.rosterMode === 'attendance'
+          ? createAttendanceStudents(availableSeatCount(classroom), current.students)
+          : current.students
+      return {
+        ...current,
+        students,
+        classroom: {
+          ...classroom,
+          fixedAssignments: sanitizeFixedAssignments(
+            classroom.fixedAssignments,
+            new Set(students.map((student) => student.id)),
+            new Set(classroom.unavailableSeats),
+          ),
+        },
+        currentPlan: null,
+      }
+    })
+    setSelectedSeat(null)
+    setMessage(`${template.name}を適用しました`)
+  }
+
+  function deleteClassroomTemplate(templateId: string) {
+    setState((current) => ({
+      ...current,
+      classroomTemplates: current.classroomTemplates.filter((template) => template.id !== templateId),
+    }))
+    setMessage('教室テンプレートを削除しました')
+  }
+
+  function addSeparationRule() {
+    if (!separationDraft.leftStudentId || !separationDraft.rightStudentId) {
+      setMessage('離す児童を2人選んでください')
+      return
+    }
+    if (separationDraft.leftStudentId === separationDraft.rightStudentId) {
+      setMessage('同じ児童は選べません')
+      return
+    }
+    const pair = studentPairKey(separationDraft.leftStudentId, separationDraft.rightStudentId)
+    if (state.separationRules.some((rule) => studentPairKey(rule.leftStudentId, rule.rightStudentId) === pair)) {
+      setMessage('同じ離すルールがすでにあります')
+      return
+    }
+    setState((current) => ({
+      ...current,
+      separationRules: [
+        ...current.separationRules,
+        {
+          id: makeLocalId('separate'),
+          leftStudentId: separationDraft.leftStudentId,
+          rightStudentId: separationDraft.rightStudentId,
+          note: separationDraft.note.trim(),
+        },
+      ],
+    }))
+    setSeparationDraft(emptySeparationDraft)
+    setMessage('離すルールを追加しました')
+  }
+
+  function deleteSeparationRule(ruleId: string) {
+    setState((current) => ({
+      ...current,
+      separationRules: current.separationRules.filter((rule) => rule.id !== ruleId),
+    }))
+    setMessage('離すルールを削除しました')
+  }
+
   function generate() {
     const result = generateSeatingPlan({
       students: state.students,
       classroom: state.classroom,
+      separationRules: state.separationRules,
       options: state.options,
       history: state.history,
       seed: Date.now(),
@@ -310,6 +457,7 @@ function App() {
   function selectSeat(key: string) {
     setSelectedSeat(key)
     setSwapTargetSeat('')
+    setActiveAlertId((alertSeatMap.get(key) ?? [])[0]?.id ?? null)
   }
 
   function swapSeats() {
@@ -336,6 +484,7 @@ function App() {
       assignments,
       students: state.students,
       classroom: state.classroom,
+      separationRules: state.separationRules,
       options: state.options,
       history: state.history,
     })
@@ -385,9 +534,25 @@ function App() {
     setMessage('座席CSVを書き出しました')
   }
 
+  function exportPdf() {
+    if (!state.currentPlan) {
+      setMessage('先に席替えを生成してください')
+      return
+    }
+    const pdf = buildPlanPdf(state.currentPlan, state.classroom, studentsById, state.rosterMode)
+    downloadBinaryFile('sekigae-seats.pdf', pdf, 'application/pdf')
+    setMessage('PDFを書き出しました')
+  }
+
   function exportStudentsCsv() {
     downloadFile('sekigae-roster.csv', exportRosterCsv(state.students), 'text/csv;charset=utf-8')
     setMessage('名簿CSVを書き出しました')
+  }
+
+  function checkMigrationStatus() {
+    const audit = buildMigrationAudit()
+    setState((current) => ({ ...current, migrationAudit: audit }))
+    setMessage(audit.note)
   }
 
   async function readWorkspaceFile(file: File | undefined) {
@@ -495,6 +660,52 @@ function App() {
               <Metric label="固定" value={fixedCount.toString()} />
               <Metric label="空席" value={Math.max(openSeatCount - state.students.length, 0).toString()} />
             </div>
+            <div className="template-tools">
+              <label>
+                テンプレート名
+                <input
+                  value={templateName}
+                  placeholder={`${state.classroom.rows}x${state.classroom.cols} 教室`}
+                  onChange={(event) => setTemplateName(event.target.value)}
+                />
+              </label>
+              <button type="button" className="secondary-button" onClick={saveClassroomTemplate}>
+                <Save size={16} />
+                保存
+              </button>
+              <label className="template-select">
+                呼び出し
+                <select
+                  value=""
+                  disabled={state.classroomTemplates.length === 0}
+                  onChange={(event) => applyClassroomTemplate(event.target.value)}
+                >
+                  <option value="">テンプレートを選択</option>
+                  {state.classroomTemplates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {state.classroomTemplates.length > 0 ? (
+              <div className="compact-list">
+                {state.classroomTemplates.map((template) => (
+                  <div className="compact-item" key={template.id}>
+                    <button type="button" onClick={() => applyClassroomTemplate(template.id)}>
+                      {template.name}
+                      <span>
+                        {template.classroom.rows}x{template.classroom.cols}
+                      </span>
+                    </button>
+                    <button type="button" className="small-icon" title="テンプレートを削除" onClick={() => deleteClassroomTemplate(template.id)}>
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </section>
 
           <section className="panel">
@@ -647,7 +858,8 @@ function App() {
               const fixed = Boolean(state.classroom.fixedAssignments[key])
               const repeatedHorizontal = isHorizontalRepeat(key, state.currentPlan, previousHorizontalPairs)
               const seatAlerts = alertSeatMap.get(key) ?? []
-              const alertKind = alertKindForSeat(seatAlerts)
+              const alertLabels = seatAlerts.map((alert) => alert.label)
+              const alertKind = alertKindForSeat(alertLabels)
               const selected = selectedSeat === key
               return (
                 <button
@@ -665,7 +877,7 @@ function App() {
                     student?.gender === 'girl' ? 'girl' : '',
                   ].join(' ')}
                   onClick={() => selectSeat(key)}
-                  title={`${row + 1}行 ${col + 1}列${seatAlerts.length > 0 ? ` / 注意: ${seatAlerts.join('、')}` : ''}`}
+                  title={`${row + 1}行 ${col + 1}列${alertLabels.length > 0 ? ` / 注意: ${alertLabels.join('、')}` : ''}`}
                 >
                   <span className="seat-index">
                     {row + 1}-{col + 1}
@@ -764,11 +976,12 @@ function App() {
                 <span className="kicker">Compare</span>
                 <h2>比較サマリー</h2>
               </div>
-              <button type="button" className="text-button" onClick={exportSeatsCsv}>
-                詳細
+              <button type="button" className="text-button" onClick={() => setDetailsOpen((current) => !current)}>
+                {detailsOpen ? '閉じる' : '詳細'}
               </button>
             </div>
             <ComparisonTable rows={comparisonRows} />
+            {detailsOpen ? <AlertDetailPanel details={alertDetails} activeAlertId={activeAlertId} /> : null}
           </section>
 
           <section className="panel warning-panel">
@@ -782,10 +995,18 @@ function App() {
             <div className="warning-list">
               {alerts.length === 0 ? <p>再発注意はありません</p> : null}
               {alerts.map((alert) => (
-                <div className={`warning-item ${alert.kind}`} key={alert.id}>
+                <button
+                  type="button"
+                  className={`warning-item ${alert.kind} ${activeAlertId === alert.id ? 'active' : ''}`}
+                  key={alert.id}
+                  onClick={() => {
+                    setActiveAlertId(alert.id)
+                    setDetailsOpen(true)
+                  }}
+                >
                   <span>{alert.label}</span>
                   {alert.seats.length > 0 ? <small>{formatAlertSeats(alert.seats)}</small> : null}
-                </div>
+                </button>
               ))}
             </div>
           </section>
@@ -847,6 +1068,15 @@ function App() {
               />
               男女ペアを配慮
             </label>
+            <SeparationRuleEditor
+              students={state.students}
+              rosterMode={state.rosterMode}
+              draft={separationDraft}
+              rules={state.separationRules}
+              onDraftChange={setSeparationDraft}
+              onAdd={addSeparationRule}
+              onDelete={deleteSeparationRule}
+            />
           </section>
 
           <section className="panel">
@@ -867,7 +1097,25 @@ function App() {
                 <Printer size={16} />
                 A4
               </button>
+              <button type="button" className="secondary-button" onClick={exportPdf}>
+                <FileText size={16} />
+                PDF
+              </button>
             </div>
+            <StudentReasonList reasons={studentReasons} />
+          </section>
+
+          <section className="panel">
+            <div className="panel-heading">
+              <div>
+                <span className="kicker">Migration</span>
+                <h2>移行確認</h2>
+              </div>
+              <button type="button" className="text-button" onClick={checkMigrationStatus}>
+                確認
+              </button>
+            </div>
+            <MigrationStatus audit={state.migrationAudit} />
           </section>
 
           <section className="panel">
@@ -1031,6 +1279,135 @@ function OptionSelect({
   )
 }
 
+function SeparationRuleEditor({
+  students,
+  rosterMode,
+  draft,
+  rules,
+  onDraftChange,
+  onAdd,
+  onDelete,
+}: {
+  students: Student[]
+  rosterMode: RosterMode
+  draft: SeparationDraft
+  rules: SeparationRule[]
+  onDraftChange: (draft: SeparationDraft) => void
+  onAdd: () => void
+  onDelete: (id: string) => void
+}) {
+  const byId = new Map(students.map((student) => [student.id, student]))
+  return (
+    <div className="rule-editor">
+      <div className="rule-grid">
+        <label>
+          離す児童A
+          <select
+            aria-label="離す児童A"
+            value={draft.leftStudentId}
+            onChange={(event) => onDraftChange({ ...draft, leftStudentId: event.target.value })}
+          >
+            <option value="">選択</option>
+            {students.map((student) => (
+              <option key={student.id} value={student.id}>
+                {displayStudentName(student, rosterMode)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          離す児童B
+          <select
+            aria-label="離す児童B"
+            value={draft.rightStudentId}
+            onChange={(event) => onDraftChange({ ...draft, rightStudentId: event.target.value })}
+          >
+            <option value="">選択</option>
+            {students.map((student) => (
+              <option key={student.id} value={student.id}>
+                {displayStudentName(student, rosterMode)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <input
+          aria-label="離す理由メモ"
+          placeholder="理由メモ"
+          value={draft.note}
+          onChange={(event) => onDraftChange({ ...draft, note: event.target.value })}
+        />
+        <button type="button" className="secondary-button" onClick={onAdd}>
+          追加
+        </button>
+      </div>
+      <div className="compact-list">
+        {rules.length === 0 ? <p>離すルールはありません</p> : null}
+        {rules.map((rule) => {
+          const left = byId.get(rule.leftStudentId)
+          const right = byId.get(rule.rightStudentId)
+          return (
+            <div className="compact-item" key={rule.id}>
+              <span>
+                {left ? displayStudentName(left, rosterMode) : '不明'} / {right ? displayStudentName(right, rosterMode) : '不明'}
+                {rule.note ? <small>{rule.note}</small> : null}
+              </span>
+              <button type="button" className="small-icon" title="離すルールを削除" onClick={() => onDelete(rule.id)}>
+                <Trash2 size={15} />
+              </button>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function AlertDetailPanel({ details, activeAlertId }: { details: AlertDetail[]; activeAlertId: string | null }) {
+  return (
+    <div className="detail-list">
+      {details.length === 0 ? <p>詳細はまだありません</p> : null}
+      {details.map((detail) => (
+        <div className={`detail-item ${activeAlertId === detail.alertId ? 'active' : ''}`} key={detail.alertId}>
+          <strong>{detail.title}</strong>
+          {detail.lines.length === 0 ? <span>該当なし</span> : null}
+          {detail.lines.slice(0, 10).map((line) => (
+            <span key={line}>{line}</span>
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function StudentReasonList({ reasons }: { reasons: StudentReason[] }) {
+  return (
+    <div className="reason-list">
+      <strong>児童別理由</strong>
+      {reasons.length === 0 ? <p>生成後に表示されます</p> : null}
+      {reasons.slice(0, 8).map((reason) => (
+        <div className="reason-item" key={reason.studentId}>
+          <span>
+            {reason.label} / {reason.seat}
+          </span>
+          <small>{reason.reasons.join('、')}</small>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function MigrationStatus({ audit }: { audit: MigrationAudit | null }) {
+  if (!audit) return <p className="mode-note">この端末の旧データ有無を必要なときに確認できます。</p>
+  return (
+    <div className="migration-status">
+      <Metric label="移行済" value={String(audit.migratedCount)} />
+      <Metric label="未移行" value={String(audit.pendingCount)} />
+      <Metric label="履歴" value={String(audit.historyCount)} />
+      <p>{audit.note}</p>
+    </div>
+  )
+}
+
 function ResultMetrics({ plan }: { plan: SeatingPlan | null }) {
   if (!plan) {
     return (
@@ -1050,6 +1427,7 @@ function ResultMetrics({ plan }: { plan: SeatingPlan | null }) {
       <Metric label="同席再発" value={plan.diagnostics.sameSeatRepeats.toString()} />
       <Metric label="同隣再発" value={plan.diagnostics.neighborRepeats.toString()} />
       <Metric label="左右再発" value={plan.diagnostics.horizontalPairRepeats.toString()} />
+      <Metric label="離席注意" value={String(plan.diagnostics.separationViolations ?? 0)} />
     </div>
   )
 }
@@ -1112,6 +1490,12 @@ function buildComparisonRows(previousPlan: SeatingPlan | null, currentPlan: Seat
       currentPlan?.diagnostics.horizontalPairRepeats,
       'lower',
     ),
+    buildNumericComparison(
+      '離席注意',
+      previousPlan?.diagnostics.separationViolations,
+      currentPlan?.diagnostics.separationViolations,
+      'lower',
+    ),
   ]
   return rows
 }
@@ -1159,6 +1543,7 @@ function buildAlerts(
   history: SeatingPlan[],
   historyDepth: number,
   classroom: AppState['classroom'],
+  separationRules: SeparationRule[],
 ): AlertItem[] {
   if (!plan) return [{ id: 'not-generated', kind: 'not-generated', label: 'まだ生成されていません', seats: [] }]
 
@@ -1201,6 +1586,16 @@ function buildAlerts(
     })
   }
 
+  const separationSeats = separationViolationSeatKeys(plan.assignments, classroom, separationRules)
+  if (separationSeats.length > 0) {
+    alerts.push({
+      id: 'separation',
+      kind: 'separation',
+      label: `離すルールに近い席が ${separationSeats.length} 席あります`,
+      seats: separationSeats,
+    })
+  }
+
   const emptySeats = buildSeatList(classroom)
     .filter((key) => !unavailable.has(key) && !plan.assignments[key])
     .sort(compareSeatKeys)
@@ -1235,16 +1630,92 @@ function buildAlertHistoryIndex(history: SeatingPlan[]) {
   return { seatByStudent, neighborPairs, leftRightPairs }
 }
 
-function buildAlertSeatMap(alerts: AlertItem[]): Map<string, string[]> {
-  const map = new Map<string, string[]>()
+function buildAlertSeatMap(alerts: AlertItem[]): Map<string, AlertItem[]> {
+  const map = new Map<string, AlertItem[]>()
   alerts.forEach((alert) => {
     alert.seats.forEach((seat) => {
-      const labels = map.get(seat) ?? []
-      labels.push(alert.label)
-      map.set(seat, labels)
+      const items = map.get(seat) ?? []
+      items.push(alert)
+      map.set(seat, items)
     })
   })
   return map
+}
+
+function buildAlertDetails(
+  plan: SeatingPlan | null,
+  history: SeatingPlan[],
+  historyDepth: number,
+  classroom: AppState['classroom'],
+  separationRules: SeparationRule[],
+  studentsById: Map<string, Student>,
+): AlertDetail[] {
+  if (!plan) return []
+  const previousPlans = history.filter((item) => item.id !== plan.id).slice(-clampRecurrenceDepth(historyDepth))
+  const past = buildAlertHistoryIndex(previousPlans)
+  return [
+    {
+      alertId: 'same-seat',
+      title: '同じ席',
+      lines: Object.entries(plan.assignments)
+        .filter(([key, studentId]) => Boolean(studentId && past.seatByStudent.get(studentId)?.has(key)))
+        .map(([key, studentId]) => `${studentName(studentsById, studentId)}: ${seatLabel(key)}`),
+    },
+    {
+      alertId: 'neighbor',
+      title: '同じ隣接',
+      lines: repeatedPairDetails(plan.assignments, classroom, past.neighborPairs, 'all', studentsById),
+    },
+    {
+      alertId: 'horizontal',
+      title: '左右ペア',
+      lines: repeatedPairDetails(plan.assignments, classroom, past.leftRightPairs, 'horizontal', studentsById),
+    },
+    {
+      alertId: 'separation',
+      title: '離すルール',
+      lines: separationViolationDetails(plan.assignments, classroom, separationRules, studentsById),
+    },
+  ].filter((detail) => detail.lines.length > 0)
+}
+
+function buildStudentReasons(
+  plan: SeatingPlan | null,
+  history: SeatingPlan[],
+  historyDepth: number,
+  classroom: AppState['classroom'],
+  separationRules: SeparationRule[],
+  studentsById: Map<string, Student>,
+  rosterMode: RosterMode,
+): StudentReason[] {
+  if (!plan) return []
+  const previousPlans = history.filter((item) => item.id !== plan.id).slice(-clampRecurrenceDepth(historyDepth))
+  const past = buildAlertHistoryIndex(previousPlans)
+  const currentPairs = new Set(adjacencyPairsForAssignments(plan.assignments, classroom))
+
+  return Object.entries(plan.assignments)
+    .flatMap(([key, studentId]) => {
+      const student = studentId ? studentsById.get(studentId) : null
+      if (!student || !studentId) return []
+      const [row] = parseSeatKey(key)
+      const reasons: string[] = []
+      if (student.vision === 'front') reasons.push(row < Math.ceil(classroom.rows / 2) ? '前方配慮OK' : '前方配慮は未達')
+      if (student.height === 'back') reasons.push(row >= Math.floor(classroom.rows / 2) ? '後方配慮OK' : '後方配慮は未達')
+      if (past.seatByStudent.get(studentId)?.has(key)) reasons.push('同じ席の再発')
+      if (studentHasRepeatedPair(studentId, plan.assignments, classroom, past.neighborPairs)) reasons.push('同じ隣接あり')
+      if (
+        separationRules.some(
+          (rule) =>
+            (rule.leftStudentId === studentId || rule.rightStudentId === studentId) &&
+            currentPairs.has(studentPairKey(rule.leftStudentId, rule.rightStudentId)),
+        )
+      ) {
+        reasons.push('離すルールに注意')
+      }
+      if (reasons.length === 0) reasons.push('通常配置')
+      return [{ studentId, label: displayStudentName(student, rosterMode), seat: seatLabel(key), reasons }]
+    })
+    .sort((left, right) => left.seat.localeCompare(right.seat, 'ja'))
 }
 
 function repeatedPairSeatKeys(
@@ -1268,10 +1739,114 @@ function repeatedPairSeatKeys(
   return Array.from(seats).sort(compareSeatKeys)
 }
 
+function repeatedPairDetails(
+  assignments: Record<string, string | null>,
+  classroom: Pick<AppState['classroom'], 'rows' | 'cols'>,
+  pastPairs: Set<string>,
+  mode: 'all' | 'horizontal',
+  studentsById: Map<string, Student>,
+): string[] {
+  const lines = new Set<string>()
+  for (let row = 0; row < classroom.rows; row += 1) {
+    for (let col = 0; col < classroom.cols; col += 1) {
+      const here = seatKey(row, col)
+      const candidates = mode === 'horizontal' ? [seatKey(row, col + 1)] : [seatKey(row, col + 1), seatKey(row + 1, col)]
+      candidates.forEach((other) => {
+        if (!pairExists(assignments[here], assignments[other], pastPairs)) return
+        lines.add(`${studentName(studentsById, assignments[here])} / ${studentName(studentsById, assignments[other])}: ${seatLabel(here)}・${seatLabel(other)}`)
+      })
+    }
+  }
+  return Array.from(lines)
+}
+
+function separationViolationSeatKeys(
+  assignments: Record<string, string | null>,
+  classroom: Pick<AppState['classroom'], 'rows' | 'cols'>,
+  rules: SeparationRule[],
+): string[] {
+  const rulePairs = new Set(rules.map((rule) => studentPairKey(rule.leftStudentId, rule.rightStudentId)))
+  const seats = new Set<string>()
+  for (let row = 0; row < classroom.rows; row += 1) {
+    for (let col = 0; col < classroom.cols; col += 1) {
+      const here = seatKey(row, col)
+      ;[seatKey(row, col + 1), seatKey(row + 1, col)].forEach((other) => {
+        const left = assignments[here]
+        const right = assignments[other]
+        if (!left || !right || !rulePairs.has(studentPairKey(left, right))) return
+        seats.add(here)
+        seats.add(other)
+      })
+    }
+  }
+  return Array.from(seats).sort(compareSeatKeys)
+}
+
+function separationViolationDetails(
+  assignments: Record<string, string | null>,
+  classroom: Pick<AppState['classroom'], 'rows' | 'cols'>,
+  rules: SeparationRule[],
+  studentsById: Map<string, Student>,
+): string[] {
+  const rulePairs = new Map(rules.map((rule) => [studentPairKey(rule.leftStudentId, rule.rightStudentId), rule]))
+  const lines = new Set<string>()
+  for (let row = 0; row < classroom.rows; row += 1) {
+    for (let col = 0; col < classroom.cols; col += 1) {
+      const here = seatKey(row, col)
+      ;[seatKey(row, col + 1), seatKey(row + 1, col)].forEach((other) => {
+        const left = assignments[here]
+        const right = assignments[other]
+        if (!left || !right) return
+        const rule = rulePairs.get(studentPairKey(left, right))
+        if (!rule) return
+        lines.add(
+          `${studentName(studentsById, left)} / ${studentName(studentsById, right)}: ${seatLabel(here)}・${seatLabel(other)}${rule.note ? ` (${rule.note})` : ''}`,
+        )
+      })
+    }
+  }
+  return Array.from(lines)
+}
+
+function adjacencyPairsForAssignments(
+  assignments: Record<string, string | null>,
+  classroom: Pick<AppState['classroom'], 'rows' | 'cols'>,
+): string[] {
+  const pairs = new Set<string>()
+  for (let row = 0; row < classroom.rows; row += 1) {
+    for (let col = 0; col < classroom.cols; col += 1) {
+      const here = assignments[seatKey(row, col)]
+      const right = assignments[seatKey(row, col + 1)]
+      const down = assignments[seatKey(row + 1, col)]
+      if (here && right && here !== right) pairs.add(studentPairKey(here, right))
+      if (here && down && here !== down) pairs.add(studentPairKey(here, down))
+    }
+  }
+  return Array.from(pairs)
+}
+
+function studentHasRepeatedPair(
+  studentId: string,
+  assignments: Record<string, string | null>,
+  classroom: Pick<AppState['classroom'], 'rows' | 'cols'>,
+  pastPairs: Set<string>,
+): boolean {
+  return adjacencyPairsForAssignments(assignments, classroom).some((pair) => {
+    const [left, right] = pair.split('|')
+    return (left === studentId || right === studentId) && pastPairs.has(pair)
+  })
+}
+
+function studentName(studentsById: Map<string, Student>, studentId: string | null | undefined): string {
+  if (!studentId) return '空席'
+  return studentsById.get(studentId)?.name ?? '不明'
+}
+
 function alertKindForSeat(labels: string[]): AlertKind | null {
   if (labels.length === 0) return null
   if (labels.some((label) => label.includes('同じ席'))) return 'same-seat'
   if (labels.some((label) => label.includes('左右ペア'))) return 'horizontal'
+  if (labels.some((label) => label.includes('離すルール'))) return 'separation'
   if (labels.some((label) => label.includes('隣接'))) return 'neighbor'
   if (labels.some((label) => label.includes('空席'))) return 'empty'
   return 'neighbor'
@@ -1335,13 +1910,36 @@ function coerceState(candidate: Partial<AppState>): AppState {
   }
   options.historyDepth = clampRecurrenceDepth(options.historyDepth)
   const history = Array.isArray(candidate.history) ? candidate.history.slice(-HISTORY_LIMIT) : []
+  const studentIds = new Set(students.map((student) => student.id))
+  const separationRules = Array.isArray(candidate.separationRules)
+    ? candidate.separationRules.filter(
+        (rule) =>
+          rule &&
+          studentIds.has(rule.leftStudentId) &&
+          studentIds.has(rule.rightStudentId) &&
+          rule.leftStudentId !== rule.rightStudentId,
+      )
+    : []
+  const classroomTemplates = Array.isArray(candidate.classroomTemplates)
+    ? candidate.classroomTemplates
+        .filter((template) => template?.classroom)
+        .map((template) => ({
+          id: String(template.id || makeLocalId('template')),
+          name: String(template.name || '教室テンプレート'),
+          classroom: normalizeClassroom(template.classroom),
+        }))
+        .slice(-12)
+    : []
   return {
     rosterMode,
     students,
-    classroom,
+    classroom: normalizeClassroom(classroom),
+    classroomTemplates,
+    separationRules,
     options,
     currentPlan: candidate.currentPlan ?? history.at(-1) ?? null,
     history,
+    migrationAudit: candidate.migrationAudit ?? null,
   }
 }
 
@@ -1364,7 +1962,7 @@ function isHorizontalRepeat(currentKey: string, plan: SeatingPlan | null, previo
 
 function pairExists(left: string | null | undefined, right: string | null | undefined, pairs: Set<string>): boolean {
   if (!left || !right || left === right) return false
-  return pairs.has(left < right ? `${left}|${right}` : `${right}|${left}`)
+  return pairs.has(studentPairKey(left, right))
 }
 
 function exportPlanCsv(plan: SeatingPlan, studentsById: Map<string, Student>): string {
@@ -1392,6 +1990,134 @@ function downloadFile(filename: string, body: string, type: string) {
   anchor.download = filename
   anchor.click()
   URL.revokeObjectURL(url)
+}
+
+function downloadBinaryFile(filename: string, body: ArrayBuffer, type: string) {
+  const blob = new Blob([body], { type })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
+function buildPlanPdf(
+  plan: SeatingPlan,
+  classroom: Classroom,
+  studentsById: Map<string, Student>,
+  rosterMode: RosterMode,
+): ArrayBuffer {
+  const lines = [`席替え 5.5  ${formatDate(plan.createdAt)}`, `score ${Math.round(plan.score)}`]
+  for (let row = 0; row < classroom.rows; row += 1) {
+    const cells: string[] = []
+    for (let col = 0; col < classroom.cols; col += 1) {
+      const key = seatKey(row, col)
+      const student = studentsById.get(plan.assignments[key] ?? '')
+      cells.push(`${row + 1}-${col + 1} ${student ? displayStudentName(student, rosterMode) : '空席'}`)
+    }
+    lines.push(cells.join('  /  '))
+  }
+  lines.push(`同席 ${plan.diagnostics.sameSeatRepeats} / 同隣 ${plan.diagnostics.neighborRepeats} / 左右 ${plan.diagnostics.horizontalPairRepeats} / 離席 ${plan.diagnostics.separationViolations ?? 0}`)
+  return makeSimpleJapanesePdf(lines)
+}
+
+function makeSimpleJapanesePdf(lines: string[]): ArrayBuffer {
+  const width = 842
+  const height = 595
+  const content = lines
+    .slice(0, 32)
+    .map((line, index) => `BT /F1 ${index === 0 ? 16 : 9} Tf 36 ${height - 42 - index * 16} Td <${toUtf16Hex(line)}> Tj ET`)
+    .join('\n')
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${width} ${height}] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>`,
+    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+    '<< /Type /Font /Subtype /Type0 /BaseFont /HeiseiKakuGo-W5 /Encoding /UniJIS-UCS2-H /DescendantFonts [6 0 R] >>',
+    '<< /Type /Font /Subtype /CIDFontType0 /BaseFont /HeiseiKakuGo-W5 /CIDSystemInfo << /Registry (Adobe) /Ordering (Japan1) /Supplement 2 >> /FontDescriptor 7 0 R >>',
+    '<< /Type /FontDescriptor /FontName /HeiseiKakuGo-W5 /Flags 6 /FontBBox [0 -200 1000 900] /ItalicAngle 0 /Ascent 880 /Descent -120 /CapHeight 700 /StemV 80 >>',
+  ]
+  let pdf = '%PDF-1.4\n'
+  const offsets = [0]
+  objects.forEach((object, index) => {
+    offsets.push(pdf.length)
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`
+  })
+  const xref = pdf.length
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
+  offsets.slice(1).forEach((offset) => {
+    pdf += `${String(offset).padStart(10, '0')} 00000 n \n`
+  })
+  pdf += `trailer << /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`
+  const encoded = new TextEncoder().encode(pdf)
+  const buffer = new ArrayBuffer(encoded.byteLength)
+  new Uint8Array(buffer).set(encoded)
+  return buffer
+}
+
+function toUtf16Hex(value: string): string {
+  const bytes = [0xfe, 0xff]
+  Array.from(value).forEach((char) => {
+    const code = char.charCodeAt(0)
+    bytes.push((code >> 8) & 0xff, code & 0xff)
+  })
+  return bytes.map((byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+function cloneClassroom(classroom: Classroom): Classroom {
+  return {
+    rows: classroom.rows,
+    cols: classroom.cols,
+    unavailableSeats: classroom.unavailableSeats.slice(),
+    fixedAssignments: { ...classroom.fixedAssignments },
+  }
+}
+
+function normalizeClassroom(classroom: Partial<Classroom>): Classroom {
+  const rows = clamp(Math.round(Number(classroom.rows)), 1, 100)
+  const cols = clamp(Math.round(Number(classroom.cols)), 1, 100)
+  const validSeats = new Set(buildSeatList({ rows, cols }))
+  return {
+    rows,
+    cols,
+    unavailableSeats: Array.isArray(classroom.unavailableSeats)
+      ? classroom.unavailableSeats.filter((key) => validSeats.has(key))
+      : [],
+    fixedAssignments: classroom.fixedAssignments
+      ? Object.fromEntries(Object.entries(classroom.fixedAssignments).filter(([key, studentId]) => validSeats.has(key) && Boolean(studentId)))
+      : {},
+  }
+}
+
+function makeLocalId(prefix: string): string {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 8)}`
+}
+
+function buildMigrationAudit(): MigrationAudit {
+  const legacyKeyPresent = localStorage.getItem(LEGACY_STORAGE_KEY) !== null
+  const workspaceRaw = localStorage.getItem(STORAGE_KEY)
+  let historyCount = 0
+  if (workspaceRaw) {
+    try {
+      const parsed = JSON.parse(workspaceRaw) as Partial<AppState>
+      historyCount = Array.isArray(parsed.history) ? parsed.history.length : 0
+    } catch {
+      historyCount = 0
+    }
+  }
+  const workspaceKeyPresent = workspaceRaw !== null
+  const migratedCount = workspaceKeyPresent ? 1 : 0
+  const pendingCount = legacyKeyPresent && !workspaceKeyPresent ? 1 : 0
+  return {
+    checkedAt: new Date().toISOString(),
+    legacyKeyPresent,
+    workspaceKeyPresent,
+    migratedCount,
+    pendingCount,
+    historyCount,
+    note: pendingCount > 0 ? '旧版データが未移行の可能性があります' : 'この端末の移行状態を確認しました',
+  }
 }
 
 function formatDate(value: string): string {

@@ -17,6 +17,8 @@
 - 行/列はスマホでも操作しやすい1〜100の選択式
 - 視力配慮、身長配慮、過去と同じ席/隣の回避、任意の男女ペア配慮
 - 生成履歴、過去と同じ左右ペアの表示
+- 生成後の席を選択し、別の席と手動で入れ替え
+- 生成画像3を元にしたリッチGUI: 三列ワークベンチ、座席ビュータブ、凡例、比較サマリー、注意パネル、下部ステータスバー
 - JSON保存/読込、座席CSV、A4印刷
 - public GitHub Pagesで使える静的配信
 
@@ -61,8 +63,14 @@ npm.cmd run preview
 - `TASKS.md`: 完了条件、進行中タスク、改善バックログ
 - `docs/PROJECT_PLAN.md`: 目的、前提、完了条件、判断理由
 - `docs/AI_DLC.md`: ハーネス、規約、スキル、フック、エージェント
+- `docs/gui-rich-concept-3-prompt.md`: 採用したGUI案3の実装プロンプト
 - `history/`: 変更履歴
 
 ## 公開
 
 `main` にpushすると `.github/workflows/pages.yml` が `npm run verify` とVite buildを実行し、`dist/` をGitHub Pagesへデプロイします。
+
+## 復元タグ
+
+- `current-ui-before-rich-gui-20260503`: 性別初期値までのリッチGUI前状態
+- `manual-swap-before-rich-gui-20260503`: 手動入れ替え実装済みのリッチGUI前状態

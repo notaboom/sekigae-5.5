@@ -71,3 +71,18 @@
 - 入れ替え後に現在プランと履歴の同一プランが更新される。
 - 使用不可席と固定席は入れ替え対象外になる。
 - GUIリッチ化前の復元タグ `current-ui-before-rich-gui-20260503` が存在する。
+
+## 2026-05-03 生成画像3リッチGUI
+
+| チェック | 結果 | メモ |
+| --- | --- | --- |
+| `npm.cmd run verify` | pass | lint、9 tests、40 harness checks、build |
+| `npm.cmd run smoke:ui` | pass | 生成、席選択、手動入れ替え、30 tiles、行列select 100 options |
+| Playwright screenshot | pass | `rich-gui-desktop-fixed.png` と `rich-gui-mobile-fit.png` で重なりなしを確認 |
+
+## 追加確認観点
+
+- 生成画像3の三列ワークベンチに合わせて、右側に比較サマリーと注意パネルが表示される。
+- スマホ幅でも5x6座席表が1画面幅に収まり、下部ステータスバーが内容に重ならない。
+- 手動入れ替え欄で選択席、入れ替え先、入れ替えボタンが横幅からはみ出さない。
+- リッチGUI前の復元タグ `manual-swap-before-rich-gui-20260503` が存在する。

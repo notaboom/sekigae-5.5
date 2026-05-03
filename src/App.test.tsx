@@ -24,7 +24,7 @@ describe('App', () => {
     fireEvent.click(screen.getByTestId('generate-button'))
 
     expect(screen.getByText('席替えを生成しました')).toBeTruthy()
-    expect(screen.getByText(/score/)).toBeTruthy()
+    expect(screen.getByText(/^score\s+-?\d+/)).toBeTruthy()
   })
 
   it('allows a generated seat to be swapped manually', () => {

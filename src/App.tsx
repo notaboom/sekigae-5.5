@@ -54,6 +54,16 @@ type StudentDraft = {
   note: string
 }
 
+type ComparisonTone = 'good' | 'bad' | 'neutral'
+
+type ComparisonRow = {
+  label: string
+  previous: string
+  current: string
+  delta: string
+  tone: ComparisonTone
+}
+
 const emptyDraft: StudentDraft = {
   name: '',
   gender: 'boy',
@@ -382,6 +392,10 @@ function App() {
       ([seat, studentId]) => seat !== selectedSeat && studentId === student.id,
     )
   })
+  const comparisonRows = buildComparisonRows(previousPlan, state.currentPlan)
+  const warnings = buildWarnings(state.currentPlan)
+  const selectedSwapStudent = selectedSeat && state.currentPlan ? studentsById.get(state.currentPlan.assignments[selectedSeat] ?? '') : null
+  const targetSwapStudent = swapTargetSeat && state.currentPlan ? studentsById.get(state.currentPlan.assignments[swapTargetSeat] ?? '') : null
 
   return (
     <div className="app-shell">
@@ -587,9 +601,23 @@ function App() {
             </div>
           </div>
 
+          <div className="board-strip" aria-label="座席ビューの状態">
+            <div className="view-tabs">
+              <span className="active">配置</span>
+              <span>比較</span>
+              <span>手動調整</span>
+            </div>
+            <div className="seat-legend">
+              <span className="legend-boy">男子</span>
+              <span className="legend-girl">女子</span>
+              <span className="legend-repeat">再発</span>
+              <span className="legend-fixed">固定</span>
+            </div>
+          </div>
+
           <div
             className="seat-grid"
-            style={{ gridTemplateColumns: `repeat(${state.classroom.cols}, minmax(72px, 1fr))` }}
+            style={{ gridTemplateColumns: `repeat(${state.classroom.cols}, minmax(var(--seat-min), 1fr))` }}
             data-testid="seat-grid"
           >
             {seats.map((key) => {
@@ -658,6 +686,16 @@ function App() {
                   </select>
                 </label>
                 <div className="swap-editor">
+                  <div className="swap-preview" aria-live="polite">
+                    <span>
+                      {selectedSeatLabel} / {selectedSwapStudent ? displayStudentName(selectedSwapStudent, state.rosterMode) : '空席'}
+                    </span>
+                    <strong>↔</strong>
+                    <span>
+                      {swapTargetSeat ? seatLabel(swapTargetSeat) : '入れ替え先'} /{' '}
+                      {targetSwapStudent ? displayStudentName(targetSwapStudent, state.rosterMode) : '空席'}
+                    </span>
+                  </div>
                   <label>
                     入れ替え先
                     <select
@@ -695,7 +733,38 @@ function App() {
           </div>
         </section>
 
-        <aside className="rail">
+        <aside className="rail analytics-rail">
+          <section className="panel comparison-panel">
+            <div className="panel-heading">
+              <div>
+                <span className="kicker">Compare</span>
+                <h2>比較サマリー</h2>
+              </div>
+              <button type="button" className="text-button" onClick={exportSeatsCsv}>
+                詳細
+              </button>
+            </div>
+            <ComparisonTable rows={comparisonRows} />
+          </section>
+
+          <section className="panel warning-panel">
+            <div className="panel-heading">
+              <div>
+                <span className="kicker">Alerts</span>
+                <h2>注意</h2>
+              </div>
+              <span className={warnings.length > 0 ? 'status-pill danger' : 'status-pill success'}>{warnings.length}件</span>
+            </div>
+            <div className="warning-list">
+              {warnings.length === 0 ? <p>再発注意はありません</p> : null}
+              {warnings.map((warning) => (
+                <div className="warning-item" key={warning}>
+                  <span>{warning}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
           <section className="panel">
             <div className="panel-heading">
               <div>
@@ -808,6 +877,12 @@ function App() {
           </section>
         </aside>
       </main>
+      <footer className="status-bar">
+        <span>Local only</span>
+        <span>{state.rosterMode === 'attendance' ? '出席番号方式' : '名前方式'}</span>
+        <span>{openSeatCount}席 / {state.students.length}人</span>
+        <span>{state.currentPlan ? `最終生成 ${formatDate(state.currentPlan.createdAt)}` : '未生成'}</span>
+      </footer>
     </div>
   )
 }
@@ -930,6 +1005,116 @@ function ResultMetrics({ plan }: { plan: SeatingPlan | null }) {
   )
 }
 
+function ComparisonTable({ rows }: { rows: ComparisonRow[] }) {
+  return (
+    <div className="comparison-table" role="table" aria-label="前回との比較">
+      <div className="comparison-row comparison-head" role="row">
+        <span role="columnheader">観点</span>
+        <span role="columnheader">前回</span>
+        <span role="columnheader">今回</span>
+        <span role="columnheader">差分</span>
+      </div>
+      {rows.map((row) => (
+        <div className="comparison-row" role="row" key={row.label}>
+          <span role="cell">{row.label}</span>
+          <span role="cell">{row.previous}</span>
+          <span role="cell">{row.current}</span>
+          <strong className={`delta ${row.tone}`} role="cell">
+            {row.delta}
+          </strong>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function buildComparisonRows(previousPlan: SeatingPlan | null, currentPlan: SeatingPlan | null): ComparisonRow[] {
+  const rows = [
+    buildNumericComparison('score', previousPlan?.score, currentPlan?.score, 'higher', Math.round),
+    buildRateComparison(
+      '前方配慮',
+      previousPlan?.diagnostics.frontNeedFrontHalf,
+      previousPlan?.diagnostics.frontNeedTotal,
+      currentPlan?.diagnostics.frontNeedFrontHalf,
+      currentPlan?.diagnostics.frontNeedTotal,
+    ),
+    buildRateComparison(
+      '後方配慮',
+      previousPlan?.diagnostics.tallBackHalf,
+      previousPlan?.diagnostics.tallTotal,
+      currentPlan?.diagnostics.tallBackHalf,
+      currentPlan?.diagnostics.tallTotal,
+    ),
+    buildNumericComparison(
+      '同席再発',
+      previousPlan?.diagnostics.sameSeatRepeats,
+      currentPlan?.diagnostics.sameSeatRepeats,
+      'lower',
+    ),
+    buildNumericComparison(
+      '同隣再発',
+      previousPlan?.diagnostics.neighborRepeats,
+      currentPlan?.diagnostics.neighborRepeats,
+      'lower',
+    ),
+    buildNumericComparison(
+      '左右再発',
+      previousPlan?.diagnostics.horizontalPairRepeats,
+      currentPlan?.diagnostics.horizontalPairRepeats,
+      'lower',
+    ),
+  ]
+  return rows
+}
+
+function buildNumericComparison(
+  label: string,
+  previousValue: number | undefined,
+  currentValue: number | undefined,
+  better: 'higher' | 'lower',
+  format: (value: number) => number = (value) => value,
+): ComparisonRow {
+  const previous = Number.isFinite(previousValue) ? format(previousValue as number) : null
+  const current = Number.isFinite(currentValue) ? format(currentValue as number) : null
+  const delta = previous !== null && current !== null ? current - previous : null
+  return {
+    label,
+    previous: previous === null ? '-' : String(previous),
+    current: current === null ? '-' : String(current),
+    delta: formatDelta(delta),
+    tone: toneForDelta(delta, better),
+  }
+}
+
+function buildRateComparison(
+  label: string,
+  previousValue: number | undefined,
+  previousTotal: number | undefined,
+  currentValue: number | undefined,
+  currentTotal: number | undefined,
+): ComparisonRow {
+  const previousPercent = percentValue(previousValue, previousTotal)
+  const currentPercent = percentValue(currentValue, currentTotal)
+  const delta = previousPercent !== null && currentPercent !== null ? currentPercent - previousPercent : null
+  return {
+    label,
+    previous: previousPercent === null ? '-' : `${previousPercent}%`,
+    current: currentPercent === null ? '-' : `${currentPercent}%`,
+    delta: formatDelta(delta, '%'),
+    tone: toneForDelta(delta, 'higher'),
+  }
+}
+
+function buildWarnings(plan: SeatingPlan | null): string[] {
+  if (!plan) return ['まだ生成されていません']
+  const warnings: string[] = []
+  if (plan.diagnostics.sameSeatRepeats > 0) warnings.push(`同じ席の再発が ${plan.diagnostics.sameSeatRepeats} 件あります`)
+  if (plan.diagnostics.neighborRepeats > 0) warnings.push(`前回と同じ隣接が ${plan.diagnostics.neighborRepeats} 件あります`)
+  if (plan.diagnostics.horizontalPairRepeats > 0) warnings.push(`左右ペアの再発が ${plan.diagnostics.horizontalPairRepeats} 件あります`)
+  if (plan.diagnostics.emptySeats > 0) warnings.push(`空席が ${plan.diagnostics.emptySeats} 席あります`)
+  return warnings
+}
+
 function loadState(): AppState {
   const raw = localStorage.getItem(STORAGE_KEY)
   if (!raw) return createInitialState()
@@ -1036,6 +1221,22 @@ function seatLabel(key: string): string {
 function rate(value: number, total: number): string {
   if (total === 0) return '-'
   return `${Math.round((value / total) * 100)}%`
+}
+
+function percentValue(value: number | undefined, total: number | undefined): number | null {
+  if (!Number.isFinite(value) || !Number.isFinite(total) || !total) return null
+  return Math.round(((value as number) / (total as number)) * 100)
+}
+
+function formatDelta(value: number | null, suffix = ''): string {
+  if (value === null) return '-'
+  if (value === 0) return `±0${suffix}`
+  return `${value > 0 ? '+' : ''}${value}${suffix}`
+}
+
+function toneForDelta(value: number | null, better: 'higher' | 'lower'): ComparisonTone {
+  if (value === null || value === 0) return 'neutral'
+  return better === 'higher' ? (value > 0 ? 'good' : 'bad') : value < 0 ? 'good' : 'bad'
 }
 
 function displayStudentName(student: Student, rosterMode: RosterMode): string {

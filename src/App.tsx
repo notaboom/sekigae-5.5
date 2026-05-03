@@ -20,13 +20,16 @@ import {
   type AppState,
   type Gender,
   type HeightNeed,
+  type RosterMode,
   type SeatingOptions,
   type SeatingPlan,
   type Student,
   type VisionNeed,
   DEFAULT_OPTIONS,
   STORAGE_KEY,
+  availableSeatCount,
   buildSeatList,
+  createAttendanceStudents,
   createInitialState,
   exportRosterCsv,
   genderLabel,
@@ -90,15 +93,55 @@ function App() {
       const fixedAssignments = Object.fromEntries(
         Object.entries(classroom.fixedAssignments).filter(([key]) => validSeats.has(key)),
       )
+      const nextClassroom = {
+        ...classroom,
+        unavailableSeats,
+        fixedAssignments,
+      }
+      const students =
+        current.rosterMode === 'attendance'
+          ? createAttendanceStudents(availableSeatCount(nextClassroom), current.students)
+          : current.students
       return {
         ...current,
+        students,
         classroom: {
-          ...classroom,
-          unavailableSeats,
-          fixedAssignments,
+          ...nextClassroom,
+          fixedAssignments: sanitizeFixedAssignments(
+            nextClassroom.fixedAssignments,
+            new Set(students.map((student) => student.id)),
+            new Set(nextClassroom.unavailableSeats),
+          ),
         },
+        currentPlan: null,
       }
     })
+  }
+
+  function setRosterMode(rosterMode: RosterMode) {
+    setState((current) => {
+      if (current.rosterMode === rosterMode) return current
+      const students =
+        rosterMode === 'attendance'
+          ? createAttendanceStudents(availableSeatCount(current.classroom), current.students)
+          : current.students
+      return {
+        ...current,
+        rosterMode,
+        students,
+        classroom: {
+          ...current.classroom,
+          fixedAssignments: sanitizeFixedAssignments(
+            current.classroom.fixedAssignments,
+            new Set(students.map((student) => student.id)),
+            new Set(current.classroom.unavailableSeats),
+          ),
+        },
+        currentPlan: null,
+        history: [],
+      }
+    })
+    setMessage(rosterMode === 'attendance' ? '出席番号方式に切り替えました' : '名前方式に切り替えました')
   }
 
   function addStudent() {
@@ -153,13 +196,27 @@ function App() {
         unavailableSeats.add(key)
         delete fixedAssignments[key]
       }
+      const classroom = {
+        ...current.classroom,
+        unavailableSeats: Array.from(unavailableSeats),
+        fixedAssignments,
+      }
+      const students =
+        current.rosterMode === 'attendance'
+          ? createAttendanceStudents(availableSeatCount(classroom), current.students)
+          : current.students
       return {
         ...current,
+        students,
         classroom: {
-          ...current.classroom,
-          unavailableSeats: Array.from(unavailableSeats),
-          fixedAssignments,
+          ...classroom,
+          fixedAssignments: sanitizeFixedAssignments(
+            fixedAssignments,
+            new Set(students.map((student) => student.id)),
+            unavailableSeats,
+          ),
         },
+        currentPlan: null,
       }
     })
   }
@@ -365,70 +422,94 @@ function App() {
                 {state.students.length}
               </span>
             </div>
-            <div className="student-form">
-              <input
-                aria-label="名前"
-                placeholder="名前"
-                value={draft.name}
-                onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
-              />
-              <select
-                aria-label="性別"
-                value={draft.gender}
-                onChange={(event) => setDraft((current) => ({ ...current, gender: event.target.value as Gender }))}
+            <div className="mode-switch" role="group" aria-label="名簿方式">
+              <button
+                type="button"
+                className={state.rosterMode === 'attendance' ? 'active' : ''}
+                onClick={() => setRosterMode('attendance')}
               >
-                <option value="unspecified">指定なし</option>
-                <option value="boy">男子</option>
-                <option value="girl">女子</option>
-              </select>
-              <select
-                aria-label="視力配慮"
-                value={draft.vision}
-                onChange={(event) => setDraft((current) => ({ ...current, vision: event.target.value as VisionNeed }))}
-              >
-                <option value="standard">視力:標準</option>
-                <option value="front">視力:前方</option>
-              </select>
-              <select
-                aria-label="身長配慮"
-                value={draft.height}
-                onChange={(event) => setDraft((current) => ({ ...current, height: event.target.value as HeightNeed }))}
-              >
-                <option value="standard">身長:標準</option>
-                <option value="back">身長:後方</option>
-              </select>
-              <input
-                aria-label="メモ"
-                placeholder="メモ"
-                value={draft.note}
-                onChange={(event) => setDraft((current) => ({ ...current, note: event.target.value }))}
-              />
-              <button type="button" className="primary-button" onClick={addStudent} disabled={!draft.name.trim()}>
-                <UserPlus size={18} />
-                追加
+                出席番号方式
+              </button>
+              <button type="button" className={state.rosterMode === 'name' ? 'active' : ''} onClick={() => setRosterMode('name')}>
+                名前方式
               </button>
             </div>
-            <textarea
-              className="import-area"
-              aria-label="CSV/TSV貼り付け"
-              placeholder="名前, 性別, 視力, 身長, メモ"
-              rows={4}
-              value={importText}
-              onChange={(event) => setImportText(event.target.value)}
-            />
-            <div className="button-row">
-              <button type="button" className="secondary-button" onClick={importRoster} disabled={!importText.trim()}>
-                <FileDown size={16} />
-                一括追加
-              </button>
-              <button type="button" className="secondary-button" onClick={exportStudentsCsv}>
-                <Download size={16} />
-                CSV
-              </button>
-            </div>
+            {state.rosterMode === 'attendance' ? (
+              <p className="mode-note">出席番号は使える席数に合わせて自動で用意されます。行列や使用不可席を変えると人数も同期します。</p>
+            ) : (
+              <>
+                <div className="student-form">
+                  <input
+                    aria-label="名前"
+                    placeholder="名前"
+                    value={draft.name}
+                    onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
+                  />
+                  <select
+                    aria-label="性別"
+                    value={draft.gender}
+                    onChange={(event) => setDraft((current) => ({ ...current, gender: event.target.value as Gender }))}
+                  >
+                    <option value="unspecified">指定なし</option>
+                    <option value="boy">男子</option>
+                    <option value="girl">女子</option>
+                  </select>
+                  <select
+                    aria-label="視力配慮"
+                    value={draft.vision}
+                    onChange={(event) => setDraft((current) => ({ ...current, vision: event.target.value as VisionNeed }))}
+                  >
+                    <option value="standard">視力:標準</option>
+                    <option value="front">視力:前方</option>
+                  </select>
+                  <select
+                    aria-label="身長配慮"
+                    value={draft.height}
+                    onChange={(event) => setDraft((current) => ({ ...current, height: event.target.value as HeightNeed }))}
+                  >
+                    <option value="standard">身長:標準</option>
+                    <option value="back">身長:後方</option>
+                  </select>
+                  <input
+                    aria-label="メモ"
+                    placeholder="メモ"
+                    value={draft.note}
+                    onChange={(event) => setDraft((current) => ({ ...current, note: event.target.value }))}
+                  />
+                  <button type="button" className="primary-button" onClick={addStudent} disabled={!draft.name.trim()}>
+                    <UserPlus size={18} />
+                    追加
+                  </button>
+                </div>
+                <textarea
+                  className="import-area"
+                  aria-label="CSV/TSV貼り付け"
+                  placeholder="名前, 性別, 視力, 身長, メモ"
+                  rows={4}
+                  value={importText}
+                  onChange={(event) => setImportText(event.target.value)}
+                />
+                <div className="button-row">
+                  <button type="button" className="secondary-button" onClick={importRoster} disabled={!importText.trim()}>
+                    <FileDown size={16} />
+                    一括追加
+                  </button>
+                  <button type="button" className="secondary-button" onClick={exportStudentsCsv}>
+                    <Download size={16} />
+                    CSV
+                  </button>
+                </div>
+              </>
+            )}
             <div className="student-list" data-testid="student-list">
               {state.students.map((student) => (
-                <StudentRow key={student.id} student={student} onUpdate={updateStudent} onRemove={removeStudent} />
+                <StudentRow
+                  key={student.id}
+                  student={student}
+                  rosterMode={state.rosterMode}
+                  onUpdate={updateStudent}
+                  onRemove={removeStudent}
+                />
               ))}
             </div>
           </section>
@@ -484,7 +565,7 @@ function App() {
                   <span className="seat-index">
                     {row + 1}-{col + 1}
                   </span>
-                  <strong>{blocked ? '使用不可' : (student?.name ?? '空席')}</strong>
+                  <strong>{blocked ? '使用不可' : student ? displayStudentName(student, state.rosterMode) : '空席'}</strong>
                   <span>{student ? studentCareLabel(student) || genderLabel(student.gender) : fixed ? '固定' : ''}</span>
                   {fixed ? <Lock className="seat-lock" size={13} aria-hidden="true" /> : null}
                 </button>
@@ -517,7 +598,7 @@ function App() {
                     <option value="">固定なし</option>
                     {selectedSeatStudentOptions.map((student) => (
                       <option key={student.id} value={student.id}>
-                        {student.name}
+                        {displayStudentName(student, state.rosterMode)}
                       </option>
                     ))}
                   </select>
@@ -648,24 +729,38 @@ function App() {
 
 function StudentRow({
   student,
+  rosterMode,
   onUpdate,
   onRemove,
 }: {
   student: Student
+  rosterMode: RosterMode
   onUpdate: (id: string, patch: Partial<Student>) => void
   onRemove: (id: string) => void
 }) {
+  const label = rosterMode === 'attendance' ? `${student.attendanceNumber ?? student.name}番` : student.name
   return (
     <div className="student-row">
       <div className="student-row-main">
-        <input aria-label={`${student.name}の名前`} value={student.name} onChange={(event) => onUpdate(student.id, { name: event.target.value })} />
-        <button type="button" className="small-icon" title="児童を削除" onClick={() => onRemove(student.id)}>
-          <Trash2 size={15} />
-        </button>
+        <input
+          aria-label={rosterMode === 'attendance' ? `${label}の出席番号` : `${student.name}の名前`}
+          value={rosterMode === 'attendance' ? label : student.name}
+          readOnly={rosterMode === 'attendance'}
+          onChange={(event) => onUpdate(student.id, { name: event.target.value })}
+        />
+        {rosterMode === 'name' ? (
+          <button type="button" className="small-icon" title="児童を削除" onClick={() => onRemove(student.id)}>
+            <Trash2 size={15} />
+          </button>
+        ) : (
+          <span className="number-badge" aria-label="自動生成">
+            自動
+          </span>
+        )}
       </div>
       <div className="student-row-controls">
         <select
-          aria-label={`${student.name}の性別`}
+          aria-label={`${label}の性別`}
           value={student.gender}
           onChange={(event) => onUpdate(student.id, { gender: event.target.value as Gender })}
         >
@@ -674,7 +769,7 @@ function StudentRow({
           <option value="girl">女子</option>
         </select>
         <select
-          aria-label={`${student.name}の視力配慮`}
+          aria-label={`${label}の視力配慮`}
           value={student.vision}
           onChange={(event) => onUpdate(student.id, { vision: event.target.value as VisionNeed })}
         >
@@ -682,7 +777,7 @@ function StudentRow({
           <option value="front">前方</option>
         </select>
         <select
-          aria-label={`${student.name}の身長配慮`}
+          aria-label={`${label}の身長配慮`}
           value={student.height}
           onChange={(event) => onUpdate(student.id, { height: event.target.value as HeightNeed })}
         >
@@ -762,17 +857,26 @@ function loadState(): AppState {
 
 function coerceState(candidate: Partial<AppState>): AppState {
   const initial = createInitialState()
-  const students = Array.isArray(candidate.students) ? candidate.students : initial.students
+  const rosterMode: RosterMode =
+    candidate.rosterMode === 'attendance' || candidate.rosterMode === 'name'
+      ? candidate.rosterMode
+      : initial.rosterMode
   const classroom = {
     ...initial.classroom,
     ...(candidate.classroom ?? {}),
   }
+  const baseStudents = Array.isArray(candidate.students) ? candidate.students : initial.students
+  const students =
+    rosterMode === 'attendance'
+      ? createAttendanceStudents(availableSeatCount(classroom), baseStudents)
+      : baseStudents
   const options = {
     ...initial.options,
     ...(candidate.options ?? {}),
   }
   const history = Array.isArray(candidate.history) ? candidate.history.slice(-HISTORY_LIMIT) : []
   return {
+    rosterMode,
     students,
     classroom,
     options,
@@ -847,6 +951,11 @@ function seatLabel(key: string): string {
 function rate(value: number, total: number): string {
   if (total === 0) return '-'
   return `${Math.round((value / total) * 100)}%`
+}
+
+function displayStudentName(student: Student, rosterMode: RosterMode): string {
+  if (rosterMode === 'attendance') return `${student.attendanceNumber ?? student.name}番`
+  return student.name
 }
 
 function clamp(value: number, min: number, max: number): number {

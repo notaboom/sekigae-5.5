@@ -1,10 +1,12 @@
 export type Gender = 'boy' | 'girl' | 'unspecified'
 export type VisionNeed = 'standard' | 'front'
 export type HeightNeed = 'standard' | 'back'
+export type RosterMode = 'attendance' | 'name'
 
 export type Student = {
   id: string
   name: string
+  attendanceNumber?: number
   gender: Gender
   vision: VisionNeed
   height: HeightNeed
@@ -59,6 +61,7 @@ export type PlanDiagnostics = {
 }
 
 export type AppState = {
+  rosterMode: RosterMode
   students: Student[]
   classroom: Classroom
   options: SeatingOptions
@@ -85,38 +88,18 @@ export const DEFAULT_OPTIONS: SeatingOptions = {
   preferGenderMix: false,
 }
 
-export const DEFAULT_STUDENTS: Student[] = [
-  makeStudent('あおい', 'girl', 'front', 'standard', '黒板が見えにくい'),
-  makeStudent('はると', 'boy', 'standard', 'back', '背が高い'),
-  makeStudent('みなと', 'boy', 'standard', 'standard', ''),
-  makeStudent('さくら', 'girl', 'standard', 'standard', ''),
-  makeStudent('ゆい', 'girl', 'front', 'standard', '前方配慮'),
-  makeStudent('そうた', 'boy', 'standard', 'standard', ''),
-  makeStudent('りん', 'girl', 'standard', 'standard', ''),
-  makeStudent('いつき', 'boy', 'standard', 'back', '背が高い'),
-  makeStudent('ひまり', 'girl', 'standard', 'standard', ''),
-  makeStudent('かい', 'boy', 'front', 'standard', '前方配慮'),
-  makeStudent('めい', 'girl', 'standard', 'standard', ''),
-  makeStudent('ゆうま', 'boy', 'standard', 'standard', ''),
-  makeStudent('こと', 'girl', 'standard', 'standard', ''),
-  makeStudent('りく', 'boy', 'standard', 'standard', ''),
-  makeStudent('つむぎ', 'girl', 'standard', 'standard', ''),
-  makeStudent('れん', 'boy', 'standard', 'back', '背が高い'),
-  makeStudent('まお', 'girl', 'front', 'standard', '前方配慮'),
-  makeStudent('なお', 'unspecified', 'standard', 'standard', ''),
-  makeStudent('ひなた', 'unspecified', 'standard', 'standard', ''),
-  makeStudent('あさひ', 'boy', 'standard', 'standard', ''),
-]
-
 export const DEFAULT_CLASSROOM: Classroom = {
   rows: 5,
   cols: 6,
-  unavailableSeats: ['4-5'],
+  unavailableSeats: [],
   fixedAssignments: {},
 }
 
+export const DEFAULT_STUDENTS: Student[] = createAttendanceStudents(availableSeatCount(DEFAULT_CLASSROOM))
+
 export function createInitialState(): AppState {
   return {
+    rosterMode: 'attendance',
     students: DEFAULT_STUDENTS,
     classroom: DEFAULT_CLASSROOM,
     options: DEFAULT_OPTIONS,
@@ -125,16 +108,34 @@ export function createInitialState(): AppState {
   }
 }
 
+export function createAttendanceStudents(count: number, existing: Student[] = []): Student[] {
+  const byNumber = new Map(existing.map((student) => [student.attendanceNumber, student]))
+  return Array.from({ length: Math.max(0, count) }, (_, index) => {
+    const attendanceNumber = index + 1
+    const existingStudent = byNumber.get(attendanceNumber)
+    if (existingStudent) {
+      return {
+        ...existingStudent,
+        name: String(attendanceNumber),
+        attendanceNumber,
+      }
+    }
+    return makeStudent(String(attendanceNumber), 'unspecified', 'standard', 'standard', '', attendanceNumber)
+  })
+}
+
 export function makeStudent(
   name: string,
   gender: Gender = 'unspecified',
   vision: VisionNeed = 'standard',
   height: HeightNeed = 'standard',
   note = '',
+  attendanceNumber?: number,
 ): Student {
   return {
     id: makeId(name || 'student'),
     name,
+    attendanceNumber,
     gender,
     vision,
     height,
@@ -211,6 +212,10 @@ export function parseRosterText(text: string): Student[] {
         columns.slice(3).join(' '),
       )
     })
+}
+
+export function availableSeatCount(classroom: Classroom): number {
+  return buildSeatList(classroom).length - classroom.unavailableSeats.length
 }
 
 export function generateSeatingPlan(input: {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_OPTIONS,
   adjacencyPairs,
+  createInitialState,
   generateSeatingPlan,
   makeStudent,
   parseRosterText,
@@ -20,6 +21,17 @@ describe('parseRosterText', () => {
     expect(students[0]).toMatchObject({ name: 'あおい', gender: 'girl', vision: 'front' })
     expect(students[1]).toMatchObject({ name: 'はると', gender: 'boy', height: 'back' })
     expect(students[2]).toMatchObject({ name: 'なお', gender: 'unspecified', vision: 'front' })
+  })
+})
+
+describe('createInitialState', () => {
+  it('defaults to attendance-number mode with one student per seat', () => {
+    const state = createInitialState()
+
+    expect(state.rosterMode).toBe('attendance')
+    expect(state.students).toHaveLength(state.classroom.rows * state.classroom.cols)
+    expect(state.students[0]).toMatchObject({ name: '1', attendanceNumber: 1 })
+    expect(state.students.at(-1)).toMatchObject({ name: '30', attendanceNumber: 30 })
   })
 })
 

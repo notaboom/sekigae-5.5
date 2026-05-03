@@ -46,7 +46,8 @@ try {
   const maxRowOption = await sizeSelects.nth(0).locator('option').last().textContent()
 
   const tileCount = await page.locator('.seat-tile').count()
-  const firstStudentVisible = await page.getByText('あおい').count()
+  const firstStudentVisible = await page.getByText('1番').count()
+  const attendanceModeVisible = await page.getByRole('button', { name: '出席番号方式' }).count()
   await page.setViewportSize({ width: 390, height: 844 })
   await page.screenshot({ path: path.join(outputDir, 'sekigae-mobile.png'), fullPage: true })
   await browser.close()
@@ -54,6 +55,7 @@ try {
 
   if (tileCount < 20) throw new Error(`seat tile count is too small: ${tileCount}`)
   if (firstStudentVisible < 1) throw new Error('default roster did not render')
+  if (attendanceModeVisible < 1) throw new Error('attendance roster mode did not render')
   if (rowOptionCount !== 100 || maxRowOption !== '100') throw new Error('classroom size selects must provide 1-100 options')
   if (consoleMessages.length > 0) throw new Error(consoleMessages.join('\n'))
 

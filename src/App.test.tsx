@@ -12,7 +12,9 @@ describe('App', () => {
     render(<App />)
 
     expect(screen.getByText('席替え 5.5')).toBeTruthy()
-    expect(screen.getByDisplayValue('あおい')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '出席番号方式' })).toBeTruthy()
+    expect(screen.getByDisplayValue('1番')).toBeTruthy()
+    expect(screen.getByDisplayValue('30番')).toBeTruthy()
     expect(screen.getByTestId('seat-grid')).toBeTruthy()
   })
 
@@ -23,5 +25,14 @@ describe('App', () => {
 
     expect(screen.getByText('席替えを生成しました')).toBeTruthy()
     expect(screen.getByText(/score/)).toBeTruthy()
+  })
+
+  it('switches to name mode when the teacher wants a named roster', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: '名前方式' }))
+
+    expect(screen.getByPlaceholderText('名前')).toBeTruthy()
+    expect(screen.getByText('名前方式に切り替えました')).toBeTruthy()
   })
 })

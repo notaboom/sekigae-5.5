@@ -20,8 +20,9 @@
 - `npm.cmd run build`: pass
 - `npm.cmd run verify`: pass
 - `npm.cmd run smoke:ui`: pass
+- GitHub Actions Pages deploy: pass
+- 公開URL: https://notaboom.github.io/sekigae-5.5/
 
 ## 次
 
-- GitHub public repositoryを作成し、GitHub Pages公開を有効化する。
-- 公開URLをREADME、TASKS、VALIDATION_REPORTに反映する。
+- 改善バックログから、座席ごとの「離す」ルールやPDF出力を追加する。

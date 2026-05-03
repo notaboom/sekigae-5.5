@@ -7,8 +7,8 @@
 - [x] Vite + React + TypeScriptで新しい席替えアプリを実装する。
 - [x] 名簿、座席レイアウト、使用不可席、固定席、条件付き生成、履歴、CSV/JSON、印刷を提供する。
 - [x] AI-DLCハーネス、テスト、docs、historyを配置する。
-- [ ] GitHub public repository を作成し、GitHub Pagesで公開する。
-- [ ] 公開後URLをREADMEと履歴に反映する。
+- [x] GitHub public repository を作成し、GitHub Pagesで公開する。
+- [x] 公開後URLをREADMEと履歴に反映する。
 
 ## 初期実装タスク
 

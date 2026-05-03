@@ -9,7 +9,7 @@
 | `npm.cmd run test` | pass | 2 files / 6 tests passed |
 | `npm.cmd run harness` | pass | 40 checks passed |
 | `npm.cmd run smoke:ui` | pass | 30 seat tiles、生成フロー、コンソールエラーなし |
-| GitHub Pages | pending | public repo作成後に更新 |
+| GitHub Pages | pass | `https://notaboom.github.io/sekigae-5.5/` が 200 / `席替え 5.5` を返す |
 
 ## 検証観点
 

@@ -19,3 +19,16 @@
 - 名簿CSV/TSVの新旧形式を読み込める。
 - 生成ボタンで座席表と履歴が更新される。
 - public repo公開前に `.env` と一時出力がGitに含まれない。
+
+## 2026-05-03 レイアウト/入力修正
+
+| チェック | 結果 | メモ |
+| --- | --- | --- |
+| `npm.cmd run verify` | pass | lint、6 tests、40 harness checks、build |
+| `npm.cmd run smoke:ui` | pass | PC/スマホスクリーンショット、30 tiles、行列select 100 options |
+
+## 追加確認観点
+
+- PC幅で左側の名簿編集行がレール幅を超えない。
+- スマホ幅で行/列が数値入力ではなく選択式になる。
+- 行/列の最大選択肢が100になる。

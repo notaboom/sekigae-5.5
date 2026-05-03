@@ -105,6 +105,10 @@
   margin-bottom: 12px;
 }
 
+.panel-heading > :first-child {
+  min-width: 0;
+}
+
 .kicker {
   display: block;
   color: var(--primary);
@@ -264,9 +268,26 @@ textarea:focus-visible {
 
 .student-row {
   display: grid;
-  grid-template-columns: minmax(88px, 1fr) 82px 76px 76px 32px;
+  gap: 7px;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.student-row-main,
+.student-row-controls {
+  display: grid;
   gap: 6px;
   align-items: center;
+}
+
+.student-row-main {
+  grid-template-columns: minmax(0, 1fr) 32px;
+}
+
+.student-row-controls {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .student-row input,
@@ -313,12 +334,14 @@ textarea:focus-visible {
 .status-pill {
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
   gap: 5px;
   min-height: 26px;
   padding: 4px 8px;
   border-radius: 4px;
   font-size: 0.75rem;
   font-weight: 760;
+  white-space: nowrap;
 }
 
 .status-pill.success {
@@ -557,8 +580,14 @@ textarea:focus-visible {
     grid-template-columns: 1fr;
   }
 
-  .student-row {
-    grid-template-columns: minmax(90px, 1fr) 70px 70px 70px 32px;
+  .student-row-controls {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 390px) {
+  .student-row-controls {
+    grid-template-columns: 1fr;
   }
 }
 

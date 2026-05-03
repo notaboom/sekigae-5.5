@@ -40,6 +40,7 @@ import {
 } from './lib/seating'
 
 const HISTORY_LIMIT = 24
+const CLASSROOM_SIZE_OPTIONS = Array.from({ length: 100 }, (_, index) => index + 1)
 
 type StudentDraft = {
   name: string
@@ -83,7 +84,7 @@ function App() {
 
   function setClassroomSize(field: 'rows' | 'cols', value: number) {
     setState((current) => {
-      const classroom = { ...current.classroom, [field]: clamp(value, 1, 12) }
+      const classroom = { ...current.classroom, [field]: clamp(value, 1, 100) }
       const validSeats = new Set(buildSeatList(classroom))
       const unavailableSeats = classroom.unavailableSeats.filter((key) => validSeats.has(key))
       const fixedAssignments = Object.fromEntries(
@@ -321,23 +322,29 @@ function App() {
             <div className="field-grid two">
               <label>
                 行
-                <input
-                  type="number"
-                  min={1}
-                  max={12}
+                <select
                   value={state.classroom.rows}
                   onChange={(event) => setClassroomSize('rows', Number(event.target.value))}
-                />
+                >
+                  {CLASSROOM_SIZE_OPTIONS.map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label>
                 列
-                <input
-                  type="number"
-                  min={1}
-                  max={12}
+                <select
                   value={state.classroom.cols}
                   onChange={(event) => setClassroomSize('cols', Number(event.target.value))}
-                />
+                >
+                  {CLASSROOM_SIZE_OPTIONS.map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
               </label>
             </div>
             <div className="metric-row">
@@ -650,35 +657,39 @@ function StudentRow({
 }) {
   return (
     <div className="student-row">
-      <input aria-label={`${student.name}の名前`} value={student.name} onChange={(event) => onUpdate(student.id, { name: event.target.value })} />
-      <select
-        aria-label={`${student.name}の性別`}
-        value={student.gender}
-        onChange={(event) => onUpdate(student.id, { gender: event.target.value as Gender })}
-      >
-        <option value="unspecified">指定なし</option>
-        <option value="boy">男子</option>
-        <option value="girl">女子</option>
-      </select>
-      <select
-        aria-label={`${student.name}の視力配慮`}
-        value={student.vision}
-        onChange={(event) => onUpdate(student.id, { vision: event.target.value as VisionNeed })}
-      >
-        <option value="standard">標準</option>
-        <option value="front">前方</option>
-      </select>
-      <select
-        aria-label={`${student.name}の身長配慮`}
-        value={student.height}
-        onChange={(event) => onUpdate(student.id, { height: event.target.value as HeightNeed })}
-      >
-        <option value="standard">標準</option>
-        <option value="back">後方</option>
-      </select>
-      <button type="button" className="small-icon" title="児童を削除" onClick={() => onRemove(student.id)}>
-        <Trash2 size={15} />
-      </button>
+      <div className="student-row-main">
+        <input aria-label={`${student.name}の名前`} value={student.name} onChange={(event) => onUpdate(student.id, { name: event.target.value })} />
+        <button type="button" className="small-icon" title="児童を削除" onClick={() => onRemove(student.id)}>
+          <Trash2 size={15} />
+        </button>
+      </div>
+      <div className="student-row-controls">
+        <select
+          aria-label={`${student.name}の性別`}
+          value={student.gender}
+          onChange={(event) => onUpdate(student.id, { gender: event.target.value as Gender })}
+        >
+          <option value="unspecified">指定なし</option>
+          <option value="boy">男子</option>
+          <option value="girl">女子</option>
+        </select>
+        <select
+          aria-label={`${student.name}の視力配慮`}
+          value={student.vision}
+          onChange={(event) => onUpdate(student.id, { vision: event.target.value as VisionNeed })}
+        >
+          <option value="standard">標準</option>
+          <option value="front">前方</option>
+        </select>
+        <select
+          aria-label={`${student.name}の身長配慮`}
+          value={student.height}
+          onChange={(event) => onUpdate(student.id, { height: event.target.value as HeightNeed })}
+        >
+          <option value="standard">標準</option>
+          <option value="back">後方</option>
+        </select>
+      </div>
     </div>
   )
 }

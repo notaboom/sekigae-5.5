@@ -41,13 +41,20 @@ try {
   await page.getByText('席替えを生成しました').waitFor()
   await page.screenshot({ path: path.join(outputDir, 'sekigae-home.png'), fullPage: true })
 
+  const sizeSelects = page.locator('.field-grid.two select')
+  const rowOptionCount = await sizeSelects.nth(0).locator('option').count()
+  const maxRowOption = await sizeSelects.nth(0).locator('option').last().textContent()
+
   const tileCount = await page.locator('.seat-tile').count()
   const firstStudentVisible = await page.getByText('あおい').count()
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.screenshot({ path: path.join(outputDir, 'sekigae-mobile.png'), fullPage: true })
   await browser.close()
   browser = undefined
 
   if (tileCount < 20) throw new Error(`seat tile count is too small: ${tileCount}`)
   if (firstStudentVisible < 1) throw new Error('default roster did not render')
+  if (rowOptionCount !== 100 || maxRowOption !== '100') throw new Error('classroom size selects must provide 1-100 options')
   if (consoleMessages.length > 0) throw new Error(consoleMessages.join('\n'))
 
   console.log(
@@ -56,7 +63,8 @@ try {
         status: 'ok',
         url,
         tileCount,
-        screenshot: 'output/playwright/sekigae-home.png',
+        rowOptionCount,
+        screenshots: ['output/playwright/sekigae-home.png', 'output/playwright/sekigae-mobile.png'],
       },
       null,
       2,
